@@ -59,12 +59,14 @@ active_tasks = {}
 # ==========================================
 
 # ==========================================
-# --- LEAST BUSY WORKER LOAD BALANCER ---
+# --- DYNAMIC ROTATIONAL LOAD BALANCER ---
 # ==========================================
 worker_loads = {} # Tracks how many active tasks each worker has
+last_worker_index = -1
 
 def get_least_busy_worker(main_client):
-    """Finds the worker currently handling the fewest files."""
+    """Finds the worker currently handling the fewest files sequentially."""
+    global last_worker_index
     workers = getattr(Config, "WORKER_CLIENTS", [])
     if not workers:
         return main_client
@@ -74,9 +76,19 @@ def get_least_busy_worker(main_client):
         if w not in worker_loads:
             worker_loads[w] = 0
             
-    # Return the worker with the minimum active tasks
-    least_busy = min(workers, key=lambda w: worker_loads.get(w, 0))
-    return least_busy
+    # Find the minimum active tasks
+    min_load = min(worker_loads[w] for w in workers)
+    
+    # Return the next worker in line that matches the minimum load
+    for i in range(len(workers)):
+        check_index = (last_worker_index + 1 + i) % len(workers)
+        worker = workers[check_index]
+        
+        if worker_loads[worker] == min_load:
+            last_worker_index = check_index
+            return worker
+            
+    return main_client
 # ==========================================
 
 # ==========================================
@@ -280,6 +292,7 @@ async def doc(client, update):
 
 
 async def process_single_file(main_client, worker_client, user_id, file_msg, new_filename_, upload_type, task_id, rkn_processing):
+    current_worker = worker_client # Track current worker to safely release it
     dl_path = None
     file_path = None
     metadata_path = None
@@ -379,6 +392,12 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 except Exception:
                     try: await worker_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
                     except: pass
+                    
+        # --- DYNAMIC ROTATION: RELEASE DOWNLOADER ---
+        if current_worker != main_client:
+            worker_loads[current_worker] = max(0, worker_loads.get(current_worker, 0) - 1)
+            current_worker = main_client
+        # --------------------------------------------
 
         metadata_mode = await digital_botz.get_metadata_mode(user_id)
         if (metadata_mode):        
@@ -437,8 +456,13 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             uploader = app
             is_main_bot = False
         else:
-            uploader = worker_client
+            # --- DYNAMIC ROTATION: ASSIGN UPLOADER ---
+            uploader = get_least_busy_worker(main_client)
+            if uploader != main_client:
+                worker_loads[uploader] = worker_loads.get(uploader, 0) + 1
+            current_worker = uploader
             is_main_bot = (uploader == main_client)
+            # -----------------------------------------
             
         file_to_upload = metadata_path if metadata_mode else file_path
         
@@ -551,8 +575,10 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         if str(task_id) in active_tasks:
             del active_tasks[str(task_id)]
             
-        if worker_client != main_client:
-            worker_loads[worker_client] = max(0, worker_loads.get(worker_client, 0) - 1)
+        # --- DYNAMIC ROTATION: FINAL RELEASE ---
+        if current_worker != main_client:
+            worker_loads[current_worker] = max(0, worker_loads.get(current_worker, 0) - 1)
+        # ---------------------------------------
             
         # 🧹 DOCKER CLEANUP: This finally block guarantees ghost data is destroyed immediately when the task resolves or crashes.
         await remove_path(ph_path, file_path, dl_path, metadata_path)
