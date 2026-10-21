@@ -331,67 +331,84 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         if main_client.premium and main_client.uploadlimit:
             await digital_botz.increment_used_limit(user_id, media.file_size)
         
-        if worker_client != main_client:
+        # -----------------------------------------------------
+        # --- SELF-HEALING DOWNLOAD LOOP ---
+        # -----------------------------------------------------
+        attempts = 0
+        while attempts < 3:
             try:
-                log_msg_down = await file_msg.copy(Config.LOG_CHANNEL)
-                target_msg = await worker_client.get_messages(Config.LOG_CHANNEL, log_msg_down.id)
-            except Exception as e:
+                # 🛡️ SELF-HEALING: Reconnect dead workers before downloading
+                if not worker_client.is_connected:
+                    try: await worker_client.connect()
+                    except Exception: pass
+
+                if worker_client != main_client:
+                    log_msg_down = await file_msg.copy(Config.LOG_CHANNEL)
+                    target_msg = await worker_client.get_messages(Config.LOG_CHANNEL, log_msg_down.id)
+                else:
+                    target_msg = file_msg
+
+                dl_path = await asyncio.wait_for(
+                    worker_client.download_media(
+                        message=target_msg,
+                        file_name=file_path,
+                        progress=progress_for_pyrogram,
+                        progress_args=(DOWNLOAD_TEXT, rkn_processing, time.time())
+                    ),
+                    timeout=7200
+                )
+                break 
+                
+            except asyncio.TimeoutError:
+                attempts += 1
+                if log_msg_down:
+                    try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
+                    except Exception: pass
+                await asyncio.sleep(5)
+                
+            except MessageIdInvalid:
                 if main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
                 await digital_botz.delete_task(task_id)
-                if "MESSAGE_ID_INVALID" not in str(e):
-                    try: await rkn_processing.edit(f"⚠️ **Fleet Error:** Main bot must be Admin in LOG_CHANNEL.\n{e}")
-                    except: pass
                 return
-        else:
-            target_msg = file_msg
-            
-        check_task = await Task.get(task_id)
-        if not check_task:
-            print(f"Task {task_id} cancelled before download.")
-            return
-        
-        try:
-            # 🛡️ ANTI-FREEZE: 2-Hour maximum timeout per file to prevent permanent socket hangs
-            dl_path = await asyncio.wait_for(
-                worker_client.download_media(
-                    message=target_msg,
-                    file_name=file_path,
-                    progress=progress_for_pyrogram,
-                    progress_args=(DOWNLOAD_TEXT, rkn_processing, time.time())
-                ),
-                timeout=7200
-            )
-        except asyncio.TimeoutError:
+                
+            except Exception as e:
+                # 🛡️ UNIVERSAL ERROR TRICK SHOT (Handles FloodWait, Runtime Dead Sockets, -503 Server Error)
+                attempts += 1
+                if log_msg_down:
+                    try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
+                    except Exception: pass
+                    
+                wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
+
+                workers_list = getattr(Config, "WORKER_CLIENTS", [])
+                if len(workers_list) > 1 and worker_client != main_client:
+                    worker_loads[worker_client] = max(0, worker_loads.get(worker_client, 0) - 1)
+                    worker_client = get_least_busy_worker(main_client)
+                    worker_loads[worker_client] = worker_loads.get(worker_client, 0) + 1
+                    current_worker = worker_client # Update current_worker so finally block can clean it up
+                    await asyncio.sleep(2)
+                else:
+                    await asyncio.sleep(wait_time)
+
+        if not dl_path:
             if main_client.premium and main_client.uploadlimit:
                 await digital_botz.increment_used_limit(user_id, -media.file_size)
             await digital_botz.delete_task(task_id)
-            try: await rkn_processing.edit("⚠️ **Download Error:** Network timeout (Froze).")
+            try: await rkn_processing.edit("⚠️ **Download Error:** Failed after retries (Server Timeout / Freeze).")
             except: pass
             return
-        except MessageIdInvalid:
-            if main_client.premium and main_client.uploadlimit:
-                await digital_botz.increment_used_limit(user_id, -media.file_size)
-            await digital_botz.delete_task(task_id)
-            return
-        except Exception as e:
-            if main_client.premium and main_client.uploadlimit:
-                await digital_botz.increment_used_limit(user_id, -media.file_size)
-            await digital_botz.delete_task(task_id)
-            if "MESSAGE_ID_INVALID" not in str(e):
-                try: await rkn_processing.edit(f"Download Error: {e}")
+
+        # Clean up log msg
+        if log_msg_down:
+            try: 
+                await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
+            except FloodWait as fw:
+                try: await worker_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
                 except: pass
-            return
-        finally:
-            if log_msg_down:
-                try: 
-                    await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
-                except FloodWait as fw:
-                    try: await worker_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
-                    except: pass
-                except Exception:
-                    try: await worker_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
-                    except: pass
+            except Exception:
+                try: await worker_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
+                except: pass
                     
         # --- DYNAMIC ROTATION: RELEASE DOWNLOADER ---
         if current_worker != main_client:
@@ -470,100 +487,129 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         if not check_task:
             print(f"Task {task_id} cancelled before upload.")
             return
-        
-        try:
-            async def perform_upload():
-                filw = None
-                try:
-                    # 🛡️ ANTI-FREEZE: 2-Hour maximum timeout for Telegram API Uploads
-                    if not is_main_bot:
-                        if upload_type == "document":
-                            filw = await asyncio.wait_for(uploader.send_document(Config.LOG_CHANNEL, document=file_to_upload, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
-                        elif upload_type == "video":
-                            filw = await asyncio.wait_for(uploader.send_video(Config.LOG_CHANNEL, video=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
-                        elif upload_type == "audio":
-                            filw = await asyncio.wait_for(uploader.send_audio(Config.LOG_CHANNEL, audio=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
-                        
-                        await asyncio.sleep(1.5)
-                        
-                        delivered = False
-                        while not delivered:
-                            try:
-                                await main_client.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
-                                delivered = True
-                            except FloodWait as fw:
-                                await asyncio.sleep(fw.value)
-                            except Exception:
-                                try:
-                                    await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
-                                    delivered = True
-                                except Exception:
-                                    delivered = True 
-                    else:
-                        if upload_type == "document":
-                            await asyncio.wait_for(main_client.send_document(user_id, document=file_to_upload, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
-                        elif upload_type == "video":
-                            await asyncio.wait_for(main_client.send_video(user_id, video=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
-                        elif upload_type == "audio":
-                            await asyncio.wait_for(main_client.send_audio(user_id, audio=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
-                finally:
-                    if filw and not is_main_bot:
-                        for attempt in range(3):
-                            try:
-                                await main_client.delete_messages(Config.LOG_CHANNEL, filw.id)
-                                break
-                            except FloodWait:
-                                try:
-                                    await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
-                                    break
-                                except Exception:
-                                    pass
-                            except Exception:
-                                try:
-                                    await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
-                                    break
-                                except Exception:
-                                    pass
 
-            if uploader == app:
-                try: await rkn_processing.edit("📤 **Wᴀɪᴛɪɴɢ ꜰᴏʀ Pʀᴇᴍɪᴜᴍ Sᴇꜱꜱɪᴏɴ...**")
-                except: pass
-                async with upload_lock:
+        # -----------------------------------------------------
+        # --- SELF-HEALING UPLOAD LOOP ---
+        # -----------------------------------------------------
+        upload_attempts = 0
+        while upload_attempts < 3:
+            try:
+                # 🛡️ SELF-HEALING: Reconnect dead uploaders before starting
+                if not uploader.is_connected:
+                    try: await uploader.connect()
+                    except Exception: pass
+
+                async def perform_upload():
+                    filw = None
+                    try:
+                        # 🛡️ ANTI-FREEZE: 2-Hour maximum timeout for Telegram API Uploads
+                        if not is_main_bot:
+                            if upload_type == "document":
+                                filw = await asyncio.wait_for(uploader.send_document(Config.LOG_CHANNEL, document=file_to_upload, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
+                            elif upload_type == "video":
+                                filw = await asyncio.wait_for(uploader.send_video(Config.LOG_CHANNEL, video=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
+                            elif upload_type == "audio":
+                                filw = await asyncio.wait_for(uploader.send_audio(Config.LOG_CHANNEL, audio=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
+                            
+                            await asyncio.sleep(1.5)
+                            
+                            delivered = False
+                            while not delivered:
+                                try:
+                                    await main_client.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
+                                    delivered = True
+                                except FloodWait as fw:
+                                    await asyncio.sleep(fw.value)
+                                except Exception:
+                                    try:
+                                        await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
+                                        delivered = True
+                                    except Exception:
+                                        delivered = True 
+                        else:
+                            if upload_type == "document":
+                                await asyncio.wait_for(main_client.send_document(user_id, document=file_to_upload, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
+                            elif upload_type == "video":
+                                await asyncio.wait_for(main_client.send_video(user_id, video=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
+                            elif upload_type == "audio":
+                                await asyncio.wait_for(main_client.send_audio(user_id, audio=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram, progress_args=(UPLOAD_TEXT, rkn_processing, time.time())), timeout=7200)
+                    finally:
+                        if filw and not is_main_bot:
+                            for attempt in range(3):
+                                try:
+                                    await main_client.delete_messages(Config.LOG_CHANNEL, filw.id)
+                                    break
+                                except FloodWait:
+                                    try:
+                                        await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
+                                        break
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    try:
+                                        await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
+                                        break
+                                    except Exception:
+                                        pass
+
+                if uploader == app:
+                    try: await rkn_processing.edit("📤 **Wᴀɪᴛɪɴɢ ꜰᴏʀ Pʀᴇᴍɪᴜᴍ Sᴇꜱꜱɪᴏɴ...**")
+                    except: pass
+                    async with upload_lock:
+                        try: await rkn_processing.edit("📤 **Uᴩʟᴏᴀᴅɪɴɢ...**")
+                        except: pass
+                        await perform_upload()
+                else:
                     try: await rkn_processing.edit("📤 **Uᴩʟᴏᴀᴅɪɴɢ...**")
                     except: pass
                     await perform_upload()
-            else:
-                try: await rkn_processing.edit("📤 **Uᴩʟᴏᴀᴅɪɴɢ...**")
+                
+                await digital_botz.delete_task(task_id)
+                try: await rkn_processing.edit("🎈 Uploaded Successfully....")
                 except: pass
-                await perform_upload()
-            
-            await digital_botz.delete_task(task_id)
-            try: await rkn_processing.edit("🎈 Uploaded Successfully....")
-            except: pass
-
-        except asyncio.TimeoutError:
-            if main_client.premium and main_client.uploadlimit:
-                await digital_botz.increment_used_limit(user_id, -media.file_size)
-            await digital_botz.delete_task(task_id)
-            try: await rkn_processing.edit("⚠️ **Upload Error:** Network timeout (Froze).")
-            except: pass
-        except FloodWait as e:
-            if main_client.premium and main_client.uploadlimit:
-                await digital_botz.increment_used_limit(user_id, -media.file_size)
-            await digital_botz.delete_task(task_id)
-            try: await rkn_processing.edit(f"⚠️ **Telegram Rate Limit:** Waiting {e.value} seconds...")
-            except: pass
-        except MessageIdInvalid:
-            if main_client.premium and main_client.uploadlimit:
-                await digital_botz.increment_used_limit(user_id, -media.file_size)
-            await digital_botz.delete_task(task_id)
-        except Exception as e:
-            if main_client.premium and main_client.uploadlimit:
-                await digital_botz.increment_used_limit(user_id, -media.file_size)
-            await digital_botz.delete_task(task_id)
-            if "MESSAGE_ID_INVALID" not in str(e):
-                try: await rkn_processing.edit(f" Eʀʀᴏʀ {e}")
-                except: pass
+                break # Exit the loop on success
+                
+            except asyncio.TimeoutError:
+                if upload_attempts >= 2:
+                    if main_client.premium and main_client.uploadlimit:
+                        await digital_botz.increment_used_limit(user_id, -media.file_size)
+                    await digital_botz.delete_task(task_id)
+                    try: await rkn_processing.edit("⚠️ **Upload Error:** Network timeout (Froze).")
+                    except: pass
+                    break
+                upload_attempts += 1
+                await asyncio.sleep(5)
+                
+            except MessageIdInvalid:
+                if main_client.premium and main_client.uploadlimit:
+                    await digital_botz.increment_used_limit(user_id, -media.file_size)
+                await digital_botz.delete_task(task_id)
+                break
+                
+            except Exception as e:
+                # 🛡️ UNIVERSAL ERROR TRICK SHOT (Handles FloodWait, Runtime Dead Sockets, -503 Server Error)
+                wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
+                
+                workers_list = getattr(Config, "WORKER_CLIENTS", [])
+                if uploader != app and len(workers_list) > 1 and not is_main_bot:
+                    worker_loads[uploader] = max(0, worker_loads.get(uploader, 0) - 1)
+                    uploader = get_least_busy_worker(main_client)
+                    worker_loads[uploader] = worker_loads.get(uploader, 0) + 1
+                    current_worker = uploader
+                    is_main_bot = (uploader == main_client)
+                    upload_attempts += 1
+                    await asyncio.sleep(2)
+                else:
+                    if upload_attempts >= 2:
+                        if main_client.premium and main_client.uploadlimit:
+                            await digital_botz.increment_used_limit(user_id, -media.file_size)
+                        await digital_botz.delete_task(task_id)
+                        if "MESSAGE_ID_INVALID" not in str(e):
+                            try: await rkn_processing.edit(f"⚠️ **Telegram Rate Limit / Error:** {e}")
+                            except: pass
+                        break
+                    await asyncio.sleep(wait_time)
+                    upload_attempts += 1
 
     except asyncio.CancelledError:
         print(f"Task {task_id} was successfully cancelled via active_tasks.")
