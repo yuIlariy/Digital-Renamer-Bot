@@ -357,29 +357,37 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     ),
                     timeout=7200
                 )
-                break 
                 
-            except asyncio.TimeoutError:
-                attempts += 1
-                if log_msg_down:
+                # 🧹 INSTANT CLEANUP ON SUCCESS
+                if worker_client != main_client and log_msg_down:
                     try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
                     except Exception: pass
-                await asyncio.sleep(5)
+                    log_msg_down = None
+                    
+                break 
                 
             except MessageIdInvalid:
+                if worker_client != main_client and log_msg_down:
+                    try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
+                    except Exception: pass
+                    log_msg_down = None
+                    
                 if main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
                 await digital_botz.delete_task(task_id)
                 return
                 
             except Exception as e:
-                # 🛡️ UNIVERSAL ERROR TRICK SHOT (Handles FloodWait, Runtime Dead Sockets, -503 Server Error)
+                # 🛡️ UNIVERSAL ERROR TRICK SHOT (Handles Timeout, FloodWait, Runtime Dead Sockets, -503 Server Error)
                 attempts += 1
-                if log_msg_down:
+                if worker_client != main_client and log_msg_down:
                     try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
                     except Exception: pass
+                    log_msg_down = None
                     
                 wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
+                if isinstance(e, asyncio.TimeoutError):
+                    wait_time = 5
 
                 workers_list = getattr(Config, "WORKER_CLIENTS", [])
                 if len(workers_list) > 1 and worker_client != main_client:
@@ -398,17 +406,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             try: await rkn_processing.edit("⚠️ **Download Error:** Failed after retries (Server Timeout / Freeze).")
             except: pass
             return
-
-        # Clean up log msg
-        if log_msg_down:
-            try: 
-                await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
-            except FloodWait as fw:
-                try: await worker_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
-                except: pass
-            except Exception:
-                try: await worker_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
-                except: pass
                     
         # --- DYNAMIC ROTATION: RELEASE DOWNLOADER ---
         if current_worker != main_client:
@@ -569,17 +566,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 except: pass
                 break # Exit the loop on success
                 
-            except asyncio.TimeoutError:
-                if upload_attempts >= 2:
-                    if main_client.premium and main_client.uploadlimit:
-                        await digital_botz.increment_used_limit(user_id, -media.file_size)
-                    await digital_botz.delete_task(task_id)
-                    try: await rkn_processing.edit("⚠️ **Upload Error:** Network timeout (Froze).")
-                    except: pass
-                    break
-                upload_attempts += 1
-                await asyncio.sleep(5)
-                
             except MessageIdInvalid:
                 if main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
@@ -587,8 +573,10 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 break
                 
             except Exception as e:
-                # 🛡️ UNIVERSAL ERROR TRICK SHOT (Handles FloodWait, Runtime Dead Sockets, -503 Server Error)
+                # 🛡️ UNIVERSAL ERROR TRICK SHOT (Handles Timeout, FloodWait, Runtime Dead Sockets, -503 Server Error)
                 wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
+                if isinstance(e, asyncio.TimeoutError):
+                    wait_time = 5
                 
                 workers_list = getattr(Config, "WORKER_CLIENTS", [])
                 if uploader != app and len(workers_list) > 1 and not is_main_bot:
@@ -605,7 +593,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                             await digital_botz.increment_used_limit(user_id, -media.file_size)
                         await digital_botz.delete_task(task_id)
                         if "MESSAGE_ID_INVALID" not in str(e):
-                            try: await rkn_processing.edit(f"⚠️ **Telegram Rate Limit / Error:** {e}")
+                            try: await rkn_processing.edit(f"⚠️ **Telegram Error / Timeout:** {e}")
                             except: pass
                         break
                     await asyncio.sleep(wait_time)
