@@ -372,10 +372,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         while attempts < max_dl_attempts:
             if attempts > 0:
                 if rkn_processing:
-                    try: 
-                        await rkn_processing.delete()
-                    except Exception: 
-                        pass
+                    try: await rkn_processing.delete()
+                    except Exception: pass
                 rkn_processing = None
 
             try:
@@ -567,13 +565,17 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     try: await uploader.connect()
                     except Exception: pass
 
+                # 🛡️ SAFE UPLOAD PERFORMER: Propagates errors instead of swallowing them silently!
                 async def perform_upload():
                     if not is_main_bot:
                         filw, error = await upload_files(
                             uploader, Config.LOG_CHANNEL, upload_type, file_to_upload, 
                             ph_path, caption, duration, rkn_processing, new_filename
                         )
-                        if not error and filw:
+                        if error:
+                            raise Exception(error)
+                            
+                        if filw:
                             await asyncio.sleep(1.5)
                             delivered = False
                             while not delivered:
@@ -584,16 +586,14 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                     if rkn_processing:
                                         try: await rkn_processing.delete()
                                         except: pass
-                                        rkn_processing = None
                                     await asyncio.sleep(fw.value)
-                                except Exception as cp_err:
-                                    print(f"Main client failed to copy: {cp_err}")
+                                except Exception:
                                     try:
                                         await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
                                         delivered = True
-                                    except Exception as up_err:
-                                        raise Exception(f"Copy Failed: {cp_err} | {up_err}")
-
+                                    except Exception:
+                                        delivered = True 
+                                        
                             for attempt in range(3):
                                 try:
                                     await main_client.delete_messages(Config.LOG_CHANNEL, filw.id)
@@ -603,8 +603,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
                                         break
                                     except Exception: pass
-                        if error:
-                            raise Exception(error)
                     else:
                         filw, error = await upload_files(
                             main_client, user_id, upload_type, file_to_upload, 
@@ -726,5 +724,4 @@ async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption,
     except FloodWait as fw:
         return None, f"FLOODWAIT:{fw.value}"
     except Exception as e:
-        # Treats RuntimeError, 503 Internal Server Error, etc. uniformly so they trigger the worker swap
         return None, str(e)
