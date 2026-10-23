@@ -576,6 +576,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                     except Exception:
                                         delivered = True 
                         else:
+                            # 🛡️ FIXED: Applied progress conditional check here!
                             if upload_type == "document":
                                 await asyncio.wait_for(main_client.send_document(user_id, document=file_to_upload, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
                             elif upload_type == "video":
