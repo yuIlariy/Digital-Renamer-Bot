@@ -30,7 +30,7 @@ License Link : https://github.com/DigitalBotz/Digital-Rename-Bot/blob/main/LICEN
 """
 
 # imports
-from pyrogram import Client, filters 
+from wzgram import Client, filters 
 from helper.database import digital_botz
 
 @Client.on_message(filters.private & filters.command('set_caption'))

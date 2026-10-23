@@ -35,8 +35,8 @@ import math, time, re, datetime, pytz, os
 from config import Config, rkn
 import random
 
-# pyrogram imports
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+# wzgram imports
+from wzgram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def get_speed_icon(speed_bps):
@@ -49,7 +49,7 @@ def get_speed_icon(speed_bps):
         return "🛸"
 
 
-async def progress_for_pyrogram(current, total, ud_type, message, start):
+async def progress_for_wzgram(current, total, ud_type, message, start):
     now = time.time()
     diff = now - start
     if round(diff % 5.00) == 0 or current == total:

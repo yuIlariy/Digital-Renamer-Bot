@@ -30,7 +30,7 @@ License Link : https://github.com/DigitalBotz/Digital-Rename-Bot/blob/main/LICEN
 """
 
 # imports
-from pyrogram import Client, filters, enums
+from wzgram import Client, filters, enums
 from helper.database import digital_botz
 
 # prefix commond ✨

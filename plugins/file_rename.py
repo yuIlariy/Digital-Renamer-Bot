@@ -19,12 +19,12 @@ The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 """
 
-# pyrogram imports
-from pyrogram import Client, filters
-from pyrogram.enums import MessageMediaType
-from pyrogram.errors import FloodWait, MessageIdInvalid
-from pyrogram.file_id import FileId
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
+# wzgram imports
+from wzgram import Client, filters
+from wzgram.enums import MessageMediaType
+from wzgram.errors import FloodWait, MessageIdInvalid
+from wzgram.file_id import FileId
+from wzgram.types import InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
 
 # hachoir imports
 from hachoir.metadata import extractMetadata
@@ -32,7 +32,7 @@ from hachoir.parser import createParser
 from PIL import Image
 
 # bots imports
-from helper.utils import progress_for_pyrogram, convert, humanbytes, add_prefix_suffix, remove_path
+from helper.utils import progress_for_wzgram, convert, humanbytes, add_prefix_suffix, remove_path
 from helper.database import digital_botz, Task
 from helper.ffmpeg import change_metadata
 from config import Config
@@ -353,7 +353,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     worker_client.download_media(
                         message=target_msg,
                         file_name=file_path,
-                        progress=progress_for_pyrogram if rkn_processing else None,
+                        progress=progress_for_wzgram if rkn_processing else None,
                         progress_args=(DOWNLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()
                     ),
                     timeout=7200
@@ -658,11 +658,11 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption, duration, rkn_processing, new_filename):
     try:
         if upload_type == "document":
-            filw = await asyncio.wait_for(bot.send_document(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_document(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_wzgram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
         elif upload_type == "video":
-            filw = await asyncio.wait_for(bot.send_video(sender_id, video=file_path, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_video(sender_id, video=file_path, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_wzgram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
         elif upload_type == "audio":
-            filw = await asyncio.wait_for(bot.send_audio(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_audio(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_wzgram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
         return filw, None
     except asyncio.TimeoutError:
         return None, "TIMEOUT: Upload connection froze and was gracefully aborted."

@@ -13,10 +13,10 @@ Copyright (c) 2022 @Digital_Botz
 # extra imports
 import random, asyncio, datetime, pytz, time, psutil, shutil
 
-# pyrogram imports
-from pyrogram import Client, filters, ContinuePropagation
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, CallbackQuery
-from pyrogram.enums import ChatAction
+# wzgram imports
+from wzgram import Client, filters, ContinuePropagation
+from wzgram.types import InlineKeyboardButton, InlineKeyboardMarkup, ForceReply, CallbackQuery
+from wzgram.enums import ChatAction
 
 # bots imports
 from helper.database import digital_botz

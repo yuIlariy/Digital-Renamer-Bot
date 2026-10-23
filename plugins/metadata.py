@@ -29,10 +29,10 @@ Repo Link : https://github.com/DigitalBotz/Digital-Rename-Bot
 License Link : https://github.com/DigitalBotz/Digital-Rename-Bot/blob/main/LICENSE
 """
 
-# pyrogram imports
-from pyrogram import Client, filters
-from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
-from pyrogram.errors import ListenerTimeout
+# wzgram imports
+from wzgram import Client, filters
+from wzgram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from wzgram.errors import ListenerTimeout
 
 # extra imports
 from helper.database import digital_botz

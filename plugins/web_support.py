@@ -20,7 +20,7 @@ from config import Config
 from plugins import __version__
 from helper.utils import humanbytes
 from helper.database import digital_botz
-from pyrogram.types import Message
+from wzgram.types import Message
 
 # Ensure templates directory exists
 os.makedirs('templates', exist_ok=True)
