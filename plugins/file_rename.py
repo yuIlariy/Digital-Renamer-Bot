@@ -76,19 +76,6 @@ def get_least_busy_worker(main_client):
     return main_client
 
 # ==========================================
-# --- SAFE DELETE TRACKER ---
-# ==========================================
-async def safe_delete_task(task_id, user_id, client):
-    """Unconditionally hunts down and deletes the processing message from chat before wiping DB record."""
-    try:
-        raw_task = await digital_botz.db["tasks"].find_one({"_id": task_id})
-        if raw_task and raw_task.get("processing_msg_id", 0) != 0:
-            await client.delete_messages(user_id, raw_task["processing_msg_id"])
-    except Exception:
-        pass
-    await digital_botz.delete_task(task_id)
-
-# ==========================================
 # --- REBOOT RESUME FUNCTION & REAPER ---
 # ==========================================
 async def resume_all_tasks(client):
@@ -119,15 +106,9 @@ async def resume_all_tasks(client):
         count = 0
         for task in tasks:
             try:
-                # 🛡️ PULL RAW FROM DB: Target ghost messages precisely
-                raw_task = await digital_botz.db["tasks"].find_one({"_id": task.id}) or {}
-                
-                if raw_task.get("processing_msg_id", 0) != 0:
-                    try: await client.delete_messages(task.user_id, raw_task["processing_msg_id"])
-                    except Exception: pass
-                    
-                if raw_task.get("log_msg_id", 0) != 0:
-                    try: await client.delete_messages(Config.LOG_CHANNEL, raw_task["log_msg_id"])
+                # 🛡️ Delete crashed progress bars from the DB tracking ID
+                if task.processing_msg_id != 0:
+                    try: await client.delete_messages(task.user_id, task.processing_msg_id)
                     except Exception: pass
 
                 msg_id = getattr(task, "file_msg_id", getattr(task, "message_id", None))
@@ -150,7 +131,6 @@ async def resume_all_tasks(client):
 
                 processing_msg = await client.send_message(task.user_id, "🔄 **Rᴇꜱᴜᴍɪɴɢ Iɴᴄᴏᴍᴩʟᴇᴛᴇ Tᴀꜱᴋ...**\n⏳ **Pʀᴏᴄᴇꜱꜱɪɴɢ...**")
                 
-                # 🛡️ PUSH NEW TRACKING IDs TO DB
                 new_task_id = await digital_botz.add_task(task.user_id, file_msg.id, task.new_name, task.upload_type, processing_msg.id)
 
                 assigned_worker = get_least_busy_worker(client)
@@ -304,7 +284,6 @@ async def doc(client, update):
         try: await update.message.delete()
         except: pass
 
-    # 🛡️ PUSH INITIAL ID TO DB
     task_id = await digital_botz.add_task(user_id, file_msg.id, new_filename_, type, getattr(rkn_processing, "id", 0))
     
     assigned_worker = get_least_busy_worker(client)
@@ -331,13 +310,19 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         user_data = await digital_botz.get_user_data(user_id)
         media = getattr(file_msg, file_msg.media.value)
 
+        # 🛡️ Limit is deducted ONCE securely at the start of the task
+        if main_client.premium and main_client.uploadlimit:
+            await digital_botz.increment_used_limit(user_id, media.file_size)
+
         try:
             prefix = await digital_botz.get_prefix(user_id)
             suffix = await digital_botz.get_suffix(user_id)
             new_filename = add_prefix_suffix(new_filename_, prefix, suffix)
             new_filename = new_filename.replace("/", "-").replace("\\", "-")
         except Exception as e:
-            await safe_delete_task(task_id, user_id, main_client)
+            if main_client.premium and main_client.uploadlimit:
+                await digital_botz.increment_used_limit(user_id, -media.file_size)
+            await digital_botz.delete_task(task_id)
             if "MESSAGE_ID_INVALID" not in str(e):
                 if rkn_processing:
                     try: await rkn_processing.edit(f"⚠️ Prefix/Suffix Error \nError: {e}")
@@ -353,9 +338,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         if rkn_processing:
             try: await rkn_processing.edit("`☄️Trying To Download....`")
             except: pass
-        
-        if main_client.premium and main_client.uploadlimit:
-            await digital_botz.increment_used_limit(user_id, media.file_size)
         
         check_task = await Task.get(task_id)
         if not check_task:
@@ -383,8 +365,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 
                 if worker_client != main_client:
                     log_msg_down = await file_msg.copy(Config.LOG_CHANNEL)
-                    # 🛡️ PUSH LOG ID TO DB FOR SAFE RESUMES
-                    await digital_botz.db["tasks"].update_one({"_id": task_id}, {"$set": {"log_msg_id": log_msg_down.id}})
                     target_msg = await worker_client.get_messages(Config.LOG_CHANNEL, log_msg_down.id)
                 else:
                     target_msg = file_msg
@@ -425,7 +405,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     
                 if main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
-                await safe_delete_task(task_id, user_id, main_client)
+                await digital_botz.delete_task(task_id)
                 return
                 
             except Exception as e:
@@ -456,7 +436,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         if not dl_path:
             if main_client.premium and main_client.uploadlimit:
                 await digital_botz.increment_used_limit(user_id, -media.file_size)
-            await safe_delete_task(task_id, user_id, main_client)
+            await digital_botz.delete_task(task_id)
             if rkn_processing:
                 try: await rkn_processing.edit("⚠️ **Download Error:** Failed after retries (Server Timeout / Freeze).")
                 except: pass
@@ -510,7 +490,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             except Exception as e:
                 if main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
-                await safe_delete_task(task_id, user_id, main_client)
+                await digital_botz.delete_task(task_id)
                 if "MESSAGE_ID_INVALID" not in str(e):
                     if rkn_processing:
                         try: await rkn_processing.edit(text=f"Yᴏᴜʀ Cᴀᴩᴛɪᴏɴ Eʀʀᴏʀ: ({e})")
@@ -565,7 +545,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     try: await uploader.connect()
                     except Exception: pass
 
-                # 🛡️ SAFE UPLOAD PERFORMER: Propagates errors instead of swallowing them silently!
                 async def perform_upload():
                     if not is_main_bot:
                         filw, error = await upload_files(
@@ -574,7 +553,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         )
                         if error:
                             raise Exception(error)
-                            
+                        
                         if filw:
                             await asyncio.sleep(1.5)
                             delivered = False
@@ -586,6 +565,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                     if rkn_processing:
                                         try: await rkn_processing.delete()
                                         except: pass
+                                        rkn_processing = None
                                     await asyncio.sleep(fw.value)
                                 except Exception:
                                     try:
@@ -593,7 +573,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         delivered = True
                                     except Exception:
                                         delivered = True 
-                                        
+                            
                             for attempt in range(3):
                                 try:
                                     await main_client.delete_messages(Config.LOG_CHANNEL, filw.id)
@@ -626,16 +606,15 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         except: pass
                     await perform_upload()
                 
-                await digital_botz.update_daily_limit(user_id, media.file_size)
-                
-                # 🛡️ EXPLICIT SUCCESS RENDER BEFORE DELETE
+                # 🛡️ EXPLICIT SUCCESS RENDER & CLEANUP
                 if rkn_processing:
                     try: 
                         await rkn_processing.edit("✅ **Uᴩʟᴏᴀᴅᴇᴅ Sᴜᴄᴄᴇꜱꜰᴜʟʟy!**")
                         await asyncio.sleep(2)
+                        await rkn_processing.delete()
                     except: pass
-                    
-                await safe_delete_task(task_id, user_id, main_client)
+                
+                await digital_botz.delete_task(task_id)
                 break 
                 
             except asyncio.TimeoutError:
@@ -643,7 +622,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 if upload_attempts >= max_up_attempts - 1:
                     if main_client.premium and main_client.uploadlimit:
                         await digital_botz.increment_used_limit(user_id, -media.file_size)
-                    await safe_delete_task(task_id, user_id, main_client)
+                    await digital_botz.delete_task(task_id)
                     if rkn_processing:
                         try: await rkn_processing.edit("⚠️ **Upload Error:** Network timeout (Froze).")
                         except: pass
@@ -656,7 +635,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             except MessageIdInvalid:
                 if main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
-                await safe_delete_task(task_id, user_id, main_client)
+                await digital_botz.delete_task(task_id)
                 break
                 
             except Exception as e:
@@ -678,7 +657,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     if upload_attempts >= max_up_attempts - 1:
                         if main_client.premium and main_client.uploadlimit:
                             await digital_botz.increment_used_limit(user_id, -media.file_size)
-                        await safe_delete_task(task_id, user_id, main_client)
+                        await digital_botz.delete_task(task_id)
                         if "MESSAGE_ID_INVALID" not in str(e):
                             if rkn_processing:
                                 try: await rkn_processing.edit(f"⚠️ **Telegram Error / Timeout:** {e}")
@@ -694,7 +673,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         print(f"Task {task_id} was successfully cancelled via active_tasks.")
         if main_client.premium and main_client.uploadlimit:
             await digital_botz.increment_used_limit(user_id, -media.file_size)
-        await safe_delete_task(task_id, user_id, main_client)
+        await digital_botz.delete_task(task_id)
 
     finally:
         if str(task_id) in active_tasks:
@@ -724,4 +703,5 @@ async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption,
     except FloodWait as fw:
         return None, f"FLOODWAIT:{fw.value}"
     except Exception as e:
+        # Treats RuntimeError, 503 Internal Server Error, etc. uniformly so they trigger the worker swap
         return None, str(e)
