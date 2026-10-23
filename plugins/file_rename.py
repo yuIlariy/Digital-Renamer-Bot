@@ -119,6 +119,7 @@ async def resume_all_tasks(client):
         count = 0
         for task in tasks:
             try:
+                # 🛡️ PULL RAW FROM DB: Target ghost messages precisely
                 raw_task = await digital_botz.db["tasks"].find_one({"_id": task.id}) or {}
                 
                 if raw_task.get("processing_msg_id", 0) != 0:
@@ -149,6 +150,7 @@ async def resume_all_tasks(client):
 
                 processing_msg = await client.send_message(task.user_id, "🔄 **Rᴇꜱᴜᴍɪɴɢ Iɴᴄᴏᴍᴩʟᴇᴛᴇ Tᴀꜱᴋ...**\n⏳ **Pʀᴏᴄᴇꜱꜱɪɴɢ...**")
                 
+                # 🛡️ PUSH NEW TRACKING IDs TO DB
                 new_task_id = await digital_botz.add_task(task.user_id, file_msg.id, task.new_name, task.upload_type, processing_msg.id)
 
                 assigned_worker = get_least_busy_worker(client)
@@ -302,6 +304,7 @@ async def doc(client, update):
         try: await update.message.delete()
         except: pass
 
+    # 🛡️ PUSH INITIAL ID TO DB
     task_id = await digital_botz.add_task(user_id, file_msg.id, new_filename_, type, getattr(rkn_processing, "id", 0))
     
     assigned_worker = get_least_busy_worker(client)
@@ -382,6 +385,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 
                 if worker_client != main_client:
                     log_msg_down = await file_msg.copy(Config.LOG_CHANNEL)
+                    # 🛡️ PUSH LOG ID TO DB FOR SAFE RESUMES
                     await digital_botz.db["tasks"].update_one({"_id": task_id}, {"$set": {"log_msg_id": log_msg_down.id}})
                     target_msg = await worker_client.get_messages(Config.LOG_CHANNEL, log_msg_down.id)
                 else:
@@ -582,12 +586,14 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         except: pass
                                         rkn_processing = None
                                     await asyncio.sleep(fw.value)
-                                except Exception:
+                                except Exception as cp_err:
+                                    print(f"Main client failed to copy: {cp_err}")
                                     try:
                                         await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
                                         delivered = True
-                                    except Exception:
-                                        delivered = True 
+                                    except Exception as up_err:
+                                        raise Exception(f"Copy Failed: {cp_err} | {up_err}")
+
                             for attempt in range(3):
                                 try:
                                     await main_client.delete_messages(Config.LOG_CHANNEL, filw.id)
@@ -623,16 +629,15 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     await perform_upload()
                 
                 await digital_botz.update_daily_limit(user_id, media.file_size)
-                await safe_delete_task(task_id, user_id, main_client)
                 
+                # 🛡️ EXPLICIT SUCCESS RENDER BEFORE DELETE
                 if rkn_processing:
                     try: 
                         await rkn_processing.edit("✅ **Uᴩʟᴏᴀᴅᴇᴅ Sᴜᴄᴄᴇꜱꜰᴜʟʟy!**")
                         await asyncio.sleep(2)
                     except: pass
-                    try: await rkn_processing.delete()
-                    except: pass
-                
+                    
+                await safe_delete_task(task_id, user_id, main_client)
                 break 
                 
             except asyncio.TimeoutError:
@@ -721,4 +726,5 @@ async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption,
     except FloodWait as fw:
         return None, f"FLOODWAIT:{fw.value}"
     except Exception as e:
+        # Treats RuntimeError, 503 Internal Server Error, etc. uniformly so they trigger the worker swap
         return None, str(e)
