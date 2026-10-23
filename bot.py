@@ -60,7 +60,7 @@ logging.basicConfig(
 #logger = logging.getLogger(__name__)
 
 # --- LOGGING MUZZLES (Method 3) ---
-logging.getLogger("pyrofork").setLevel(logging.WARNING) # Kept untouched
+logging.getLogger("wzgram").setLevel(logging.WARNING) # Kept untouched
 logging.getLogger("hachoir").setLevel(logging.ERROR)    # Silences the 2GB ZIP warnings
 logging.getLogger("aiohttp").setLevel(logging.ERROR)    # Silences routine web server logs
 # ----------------------------------
@@ -257,7 +257,8 @@ def main():
             await wc.stop()
         # -------------------------
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(start_services())
     except KeyboardInterrupt:
