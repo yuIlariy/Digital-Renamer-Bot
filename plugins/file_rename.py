@@ -119,7 +119,6 @@ async def resume_all_tasks(client):
         count = 0
         for task in tasks:
             try:
-                # 🛡️ PULL RAW FROM DB: Target ghost messages precisely
                 raw_task = await digital_botz.db["tasks"].find_one({"_id": task.id}) or {}
                 
                 if raw_task.get("processing_msg_id", 0) != 0:
@@ -150,7 +149,6 @@ async def resume_all_tasks(client):
 
                 processing_msg = await client.send_message(task.user_id, "🔄 **Rᴇꜱᴜᴍɪɴɢ Iɴᴄᴏᴍᴩʟᴇᴛᴇ Tᴀꜱᴋ...**\n⏳ **Pʀᴏᴄᴇꜱꜱɪɴɢ...**")
                 
-                # 🛡️ PUSH NEW TRACKING IDs TO DB
                 new_task_id = await digital_botz.add_task(task.user_id, file_msg.id, task.new_name, task.upload_type, processing_msg.id)
 
                 assigned_worker = get_least_busy_worker(client)
@@ -304,7 +302,6 @@ async def doc(client, update):
         try: await update.message.delete()
         except: pass
 
-    # 🛡️ PUSH INITIAL ID TO DB
     task_id = await digital_botz.add_task(user_id, file_msg.id, new_filename_, type, getattr(rkn_processing, "id", 0))
     
     assigned_worker = get_least_busy_worker(client)
@@ -363,7 +360,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             return
 
         # -----------------------------------------------------
-        # --- SELF-HEALING DOWNLOAD LOOP (DYNAMIC SCALING) ---
+        # --- SELF-HEALING DOWNLOAD LOOP ---
         # -----------------------------------------------------
         workers_list = getattr(Config, "WORKER_CLIENTS", [])
         max_dl_attempts = max(3, len(workers_list) + 2)
@@ -371,7 +368,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         
         while attempts < max_dl_attempts:
             if attempts > 0:
-                # 🛡️ SILENT FALLBACK: Delete old progress bar entirely and go silent
                 if rkn_processing:
                     try: 
                         await rkn_processing.delete()
@@ -386,7 +382,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 
                 if worker_client != main_client:
                     log_msg_down = await file_msg.copy(Config.LOG_CHANNEL)
-                    # 🛡️ PUSH LOG ID TO DB FOR SAFE RESUMES
                     await digital_botz.db["tasks"].update_one({"_id": task_id}, {"$set": {"log_msg_id": log_msg_down.id}})
                     target_msg = await worker_client.get_messages(Config.LOG_CHANNEL, log_msg_down.id)
                 else:
@@ -468,7 +463,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 except: pass
             return
                     
-        # --- DYNAMIC ROTATION: RELEASE DOWNLOADER ---
         if current_worker != main_client:
             worker_loads[current_worker] = max(0, worker_loads.get(current_worker, 0) - 1)
             current_worker = main_client
@@ -538,7 +532,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             uploader = app
             is_main_bot = False
         else:
-            # --- DYNAMIC ROTATION: ASSIGN UPLOADER ---
             uploader = get_least_busy_worker(main_client)
             if uploader != main_client:
                 worker_loads[uploader] = worker_loads.get(uploader, 0) + 1
@@ -553,7 +546,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             return
 
         # -----------------------------------------------------
-        # --- SELF-HEALING UPLOAD LOOP (DYNAMIC SCALING) ---
+        # --- SELF-HEALING UPLOAD LOOP ---
         # -----------------------------------------------------
         max_up_attempts = max(3, len(workers_list) + 2)
         upload_attempts = 0
@@ -571,16 +564,12 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     except Exception: pass
 
                 async def perform_upload():
-                    filw = None
-                    try:
-                        if not is_main_bot:
-                            if upload_type == "document":
-                                filw = await asyncio.wait_for(uploader.send_document(Config.LOG_CHANNEL, document=file_to_upload, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
-                            elif upload_type == "video":
-                                filw = await asyncio.wait_for(uploader.send_video(Config.LOG_CHANNEL, video=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
-                            elif upload_type == "audio":
-                                filw = await asyncio.wait_for(uploader.send_audio(Config.LOG_CHANNEL, audio=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
-                            
+                    if not is_main_bot:
+                        filw, error = await upload_files(
+                            uploader, Config.LOG_CHANNEL, upload_type, file_to_upload, 
+                            ph_path, caption, duration, rkn_processing, new_filename
+                        )
+                        if not error and filw:
                             await asyncio.sleep(1.5)
                             delivered = False
                             while not delivered:
@@ -599,29 +588,24 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         delivered = True
                                     except Exception:
                                         delivered = True 
-                        else:
-                            if upload_type == "document":
-                                await asyncio.wait_for(main_client.send_document(user_id, document=file_to_upload, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
-                            elif upload_type == "video":
-                                await asyncio.wait_for(main_client.send_video(user_id, video=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
-                            elif upload_type == "audio":
-                                await asyncio.wait_for(main_client.send_audio(user_id, audio=file_to_upload, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_pyrogram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
-                    finally:
-                        if filw and not is_main_bot:
                             for attempt in range(3):
                                 try:
                                     await main_client.delete_messages(Config.LOG_CHANNEL, filw.id)
                                     break
-                                except FloodWait:
-                                    try:
-                                        await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
-                                        break
-                                    except Exception: pass
                                 except Exception:
                                     try:
                                         await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
                                         break
                                     except Exception: pass
+                        if error:
+                            raise Exception(error)
+                    else:
+                        filw, error = await upload_files(
+                            main_client, user_id, upload_type, file_to_upload, 
+                            ph_path, caption, duration, rkn_processing, new_filename
+                        )
+                        if error:
+                            raise Exception(error)
 
                 if uploader == app:
                     if rkn_processing:
@@ -639,6 +623,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     await perform_upload()
                 
                 await digital_botz.update_daily_limit(user_id, media.file_size)
+                await safe_delete_task(task_id, user_id, main_client)
                 
                 if rkn_processing:
                     try: 
@@ -648,8 +633,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     try: await rkn_processing.delete()
                     except: pass
                 
-                await digital_botz.delete_task(task_id)
-                break
+                break 
                 
             except asyncio.TimeoutError:
                 upload_attempts += 1
