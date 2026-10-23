@@ -77,7 +77,8 @@ class Task(Document):
     file_msg_id: int
     new_name: str
     upload_type: str
-    processing_msg_id: int = 0 # <--- NEW: Tracks the frozen progress bar message ID!
+    processing_msg_id: int = 0 
+    log_msg_id: int = 0 # 🛡️ ADDED: Explicit DB Tracking for Log Channel ghost files!
     status: str = "pending"
     created_at: float = Field(default_factory=time.time)
 
@@ -198,7 +199,6 @@ class Database:
 
     async def get_metadata_code(self, id: int):
         user = await User.get(id)
-        # FIXED: Added the default string fallback here instead of returning None
         return user.metadata_code if user else "--change-title @OtherBs --change-video-title @OtherBs --change-audio-title @OtherBs --change-subtitle-title @OtherBs --change-author @OtherBs"
 
     # --- ATOMIC PARALLEL SAFE UPDATER ---
@@ -452,7 +452,6 @@ class Database:
         
         return await cursor.to_list(length=limit)
 
-    # --- UPDATED: TAKES PROGRESS BAR MSG ID ---
     async def add_task(self, user_id: int, file_msg_id: int, new_name: str, upload_type: str, processing_msg_id: int = 0):
         task = Task(user_id=user_id, file_msg_id=file_msg_id, new_name=new_name, upload_type=upload_type, processing_msg_id=processing_msg_id)
         await task.insert()
