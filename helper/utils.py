@@ -45,19 +45,26 @@ def get_speed_icon(speed_bps):
         return "🐢"
     elif speed_mbps < 11:
         return "🚀"
-    else:
+    elif speed_mbps <= 16:
         return "🛸"
+    else:
+        return "⚡"
 
 
 async def progress_for_wzgram(current, total, ud_type, message, start):
     now = time.time()
-    diff = now - start
+    diff = max(now - start, 0.001)
+
+    # Avoid division by zero when the total size is unavailable.
+    if total <= 0:
+        return
+
     if round(diff % 5.00) == 0 or current == total:
         percentage = current * 100 / total
         speed = current / diff
         speed_icon = get_speed_icon(speed)
         elapsed_time = round(diff) * 1000
-        time_to_completion = round((total - current) / speed) * 1000
+        time_to_completion = round((total - current) / speed) * 1000 if speed > 0 else 0
         estimated_total_time = elapsed_time + time_to_completion
 
         elapsed_time = TimeFormatter(milliseconds=elapsed_time)
