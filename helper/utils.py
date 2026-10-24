@@ -47,8 +47,10 @@ def get_speed_icon(speed_bps):
         return "🚀"
     elif speed_mbps <= 16:
         return "🛸"
-    else:
+    elif speed_mbps < 50:
         return "⚡"
+    else:
+        return "🫨"
 
 
 async def progress_for_wzgram(current, total, ud_type, message, start):
