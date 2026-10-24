@@ -172,13 +172,12 @@ async def add_premium(client, message):
                 "• `1 month` → months\n"
                 "• `1 year` → year\n"
                 "• `Lifetime` → Lifetime Plan\n\n"
-                "📃 **Example:** `/addpremium 6318135266 Pro 1 month`",
-                quote=True
+                "📃 **Example:** `/addpremium 6318135266 Pro 1 month`"
             )
         # ----------------------------------------
 
         if plan_type not in ["Pro", "UltraPro"]:
-            return await message.reply_text("🧩 Invalid Plan Type. Please use '`Pro`' or '`UltraPro`' ", quote=True)
+            return await message.reply_text("🧩 Invalid Plan Type. Please use '`Pro`' or '`UltraPro`' ")
 
         time_zone = datetime.datetime.now(pytz.timezone("Africa/Nairobi"))
         current_time = time_zone.strftime("%d-%m-%Y\n⏱️ ᴊᴏɪɴɪɴɢ ᴛɪᴍᴇ : %I:%M:%S %p")
@@ -204,8 +203,7 @@ async def add_premium(client, message):
             seconds = await get_seconds(time_string)
             if seconds <= 0:
                 return await message.reply_text(
-                    "⏰ Invalid time format. Please use `/addpremium user_id Plan_Type 1 month` or `Lifetime`",
-                    quote=True
+                    "⏰ Invalid time format. Please use `/addpremium user_id Plan_Type 1 month` or `Lifetime`"
                 )
             expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)
             is_lifetime = False
@@ -238,7 +236,6 @@ async def add_premium(client, message):
             f"⏰ ᴘʀᴇᴍɪᴜᴍ ᴀᴄᴄᴇꜱꜱ : <code>{time_string}</code>\n\n"
             f"⏳ ᴊᴏɪɴɪɴɢ ᴅᴀᴛᴇ : {current_time}\n\n"
             f"⌛️ ᴇxᴘɪʀʏ ᴅᴀᴛᴇ : {expiry_str_in_ist}",
-            quote=True,
             disable_web_page_preview=True
         )
 
@@ -279,8 +276,7 @@ async def add_premium(client, message):
                 "• `1 month` → months\n"
                 "• `1 year` → year\n"
                 "• `Lifetime` → Lifetime Plan\n\n"
-                "📃 **Example:** `/addpremium 6318135266 1 month`",
-                quote=True
+                "📃 **Example:** `/addpremium 6318135266 1 month`"
             )
         # -------------------------------------------
 
@@ -301,8 +297,7 @@ async def add_premium(client, message):
             seconds = await get_seconds(time_string)
             if seconds <= 0:
                 return await message.reply_text(
-                    "Invalid time format. Please use `/addpremium user_id 1 year 1 month 1 day 1 min 10 s` or `Lifetime`",
-                    quote=True
+                    "Invalid time format. Please use `/addpremium user_id 1 year 1 month 1 day 1 min 10 s` or `Lifetime`"
                 )
             expiry_time = datetime.datetime.now() + datetime.timedelta(seconds=seconds)
             is_lifetime = False
@@ -329,7 +324,6 @@ async def add_premium(client, message):
             f"⏰ ᴘʀᴇᴍɪᴜᴍ ᴀᴄᴄᴇꜱꜱ : <code>{time_string}</code>\n\n"
             f"⏳ ᴊᴏɪɴɪɴɢ ᴅᴀᴛᴇ : {current_time}\n\n"
             f"⌛️ ᴇxᴘɪʀʏ ᴅᴀᴛᴇ : {expiry_str_in_ist}",
-            quote=True,
             disable_web_page_preview=True
         )
 
@@ -366,8 +360,7 @@ async def remove_premium(bot, message):
         if await digital_botz.has_premium_access(user_id):
             await digital_botz.remove_premium(user_id)
             await message.reply_text(
-                f"ʜᴇʏ {user_mention}, ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴜᴄᴄᴇssғᴜʟʟʏ ʀᴇᴍᴏᴠᴇᴅ.",
-                quote=True
+                f"ʜᴇʏ {user_mention}, ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴜᴄᴄᴇssғᴜʟʟʏ ʀᴇᴍᴏᴠᴇᴅ."
             )
             try:
                 await bot.send_message(
@@ -381,11 +374,10 @@ async def remove_premium(bot, message):
             except: pass
         else:
             await message.reply_text(
-                "ᴜɴᴀʙʟᴇ ᴛᴏ ʀᴇᴍᴏᴠᴇ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀ !\nᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ, ɪᴛ ᴡᴀꜱ ᴀ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀ ɪᴅ ?",
-                quote=True
+                "ᴜɴᴀʙʟᴇ ᴛᴏ ʀᴇᴍᴏᴠᴇ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀ !\nᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ, ɪᴛ ᴡᴀꜱ ᴀ ᴘʀᴇᴍɪᴜᴍ ᴜꜱᴇʀ ɪᴅ ?"
             )
     else:
-        await message.reply_text("📜 ᴜꜱᴀɢᴇ : `/remove_premium ᴜꜱᴇʀ ɪᴅ`", quote=True)
+        await message.reply_text("📜 ᴜꜱᴀɢᴇ : `/remove_premium ᴜꜱᴇʀ ɪᴅ`")
 
 
 @Client.on_message(filters.private & filters.command("restart") & filters.user(Config.ADMIN))
@@ -464,8 +456,7 @@ async def ban(c: Client, m: Message):
             f"`/ban user_id ban_duration ban_reason`\n\n"
             f"🧪 Example:\n"
             f"`/ban 1234567 28 You misused me.`\n\n"
-            f"✅ This will ban user with ID `1234567` for `28` days for the reason: `You misused me`.",
-            quote=True
+            f"✅ This will ban user with ID `1234567` for `28` days for the reason: `You misused me`."
         )
         return
 
@@ -485,9 +476,9 @@ async def ban(c: Client, m: Message):
             ban_log_text += f"\n\nUser notification failed (user may have blocked the bot)."
 
         await digital_botz.ban_user(user_id, ban_duration, ban_reason)
-        await m.reply_text(ban_log_text, quote=True)
+        await m.reply_text(ban_log_text)
     except Exception as e:
-        await m.reply_text(f"🧪 Error occurred!\n\n`{e}`", quote=True)
+        await m.reply_text(f"🧪 Error occurred!\n\n`{e}`")
 
 
 @Client.on_message(filters.private & filters.command("unban") & filters.user(Config.ADMIN))
@@ -499,8 +490,7 @@ async def unban(c: Client, m: Message):
             f"`/unban user_id`\n\n"
             f"🧪 Example:\n"
             f"`/unban 1234567`\n\n"
-            f"✅ This will unban user with ID `1234567`.",
-            quote=True
+            f"✅ This will unban user with ID `1234567`."
         )
         return
 
@@ -514,9 +504,9 @@ async def unban(c: Client, m: Message):
             unban_log_text += f"\n\nUser notification failed!"
             
         await digital_botz.remove_ban(user_id)
-        await m.reply_text(unban_log_text, quote=True)
+        await m.reply_text(unban_log_text)
     except Exception as e:
-        await m.reply_text(f"🧪 Error occurred!\n\n`{e}`", quote=True)
+        await m.reply_text(f"🧪 Error occurred!\n\n`{e}`")
 
 
 @Client.on_message(filters.private & filters.command("banned_users") & filters.user(Config.ADMIN))
