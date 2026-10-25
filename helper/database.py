@@ -68,6 +68,7 @@ class BotStats(Document):
     id: str = Field(default="network_stats", alias="_id")
     sent: int = 0
     recv: int = 0
+    total_renames: int = 0
 
     class Settings:
         name = "stats"
@@ -420,6 +421,17 @@ class Database:
     async def get_network_stats(self):
         stats = await BotStats.get("network_stats")
         return {"sent": stats.sent, "recv": stats.recv} if stats else {"sent": 0, "recv": 0}
+
+    async def increment_total_renames(self):
+        stats = await BotStats.get("network_stats")
+        if not stats:
+            stats = BotStats()
+        stats.total_renames += 1
+        await stats.save()
+
+    async def get_total_renames(self):
+        stats = await BotStats.get("network_stats")
+        return stats.total_renames if stats else 0
 
     async def get_expiring_users(self):
         now = datetime.datetime.now()
