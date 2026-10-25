@@ -21,6 +21,7 @@ copies or substantial portions of the Software.
 
 # wzgram imports
 from wzgram import Client, filters
+from wzgram.types import ReplyParameters
 from wzgram.enums import MessageMediaType
 from wzgram.errors import FloodWait, MessageIdInvalid
 from wzgram.file_id import FileId
@@ -178,7 +179,7 @@ async def rename_start(client, message):
             f"🆔 ᴅᴄ ɪᴅ: `{dcid}`\n\n"
             f"✏️ ᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ᴛʜᴇ ɴᴇᴡ ғɪʟᴇɴᴀᴍᴇ ᴡɪᴛ🇭 ᴇxᴛᴇɴsɪᴏɴ ᴀɴᴅ ʀᴇᴘʟʏ ᴛᴏ ᴛhis ᴍᴇssᴀɢᴇ...__**"
         )
-        await message.reply_text(text, reply_to_message_id=message.id, reply_markup=ForceReply(True))
+        await message.reply_text(text, reply_parameters=ReplyParameters(message_id=message.id), reply_markup=ForceReply(True))
 
     if client.premium and client.uploadlimit:
         await digital_botz.reset_uploadlimit_access(user_id)
@@ -250,7 +251,7 @@ async def refunc(client, message):
             button.append([InlineKeyboardButton("🎵 Aᴜᴅɪᴏ", callback_data = "upload_audio")])
         await message.reply(
             text=f"**Sᴇʟᴇᴄᴛ Tʜᴇ Oᴜᴛᴩᴜᴛ Fɪʟᴇ Tyᴩᴇ**\n**• Fɪʟᴇ Nᴀᴍᴇ :-**`{new_name}`",
-            reply_to_message_id=file.id,
+            reply_parameters=ReplyParameters(message_id=file.id),
             reply_markup=InlineKeyboardMarkup(button)
         )
     else:
@@ -416,7 +417,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 try: await rkn_processing.edit("⚠️ **Download Error:** Failed after retries (Server Timeout / Freeze).")
                 except: pass
             else:
-                try: await main_client.send_message(user_id, "⚠️ **Download Error:** Failed after retries (Server Timeout / Freeze).", reply_to_message_id=file_msg.id)
+                try: await main_client.send_message(user_id, "⚠️ **Download Error:** Failed after retries (Server Timeout / Freeze).", reply_parameters=ReplyParameters(message_id=file_msg.id))
                 except: pass
             return
                     
@@ -471,7 +472,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         try: await rkn_processing.edit(text=f"Yᴏᴜʀ Cᴀᴩᴛɪᴏɴ Eʀʀᴏʀ: ({e})")
                         except: pass
                     else:
-                        try: await main_client.send_message(user_id, f"Yᴏᴜʀ Cᴀᴩᴛɪᴏɴ Eʀʀᴏʀ: ({e})", reply_to_message_id=file_msg.id)
+                        try: await main_client.send_message(user_id, f"Yᴏᴜʀ Cᴀᴩᴛɪᴏɴ Eʀʀᴏʀ: ({e})", reply_parameters=ReplyParameters(message_id=file_msg.id))
                         except: pass
                 return
         else:
@@ -593,7 +594,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         try: await rkn_processing.edit("⚠️ **Upload Error:** Network timeout (Froze).")
                         except: pass
                     else:
-                        try: await main_client.send_message(user_id, "⚠️ **Upload Error:** Network timeout (Froze).", reply_to_message_id=file_msg.id)
+                        try: await main_client.send_message(user_id, "⚠️ **Upload Error:** Network timeout (Froze).", reply_parameters=ReplyParameters(message_id=file_msg.id))
                         except: pass
                     break
                 await asyncio.sleep(5)
@@ -629,7 +630,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                 try: await rkn_processing.edit(f"⚠️ **Telegram Error / Timeout:** {e}")
                                 except: pass
                             else:
-                                try: await main_client.send_message(user_id, f"⚠️ **Telegram Error / Timeout:** {e}", reply_to_message_id=file_msg.id)
+                                try: await main_client.send_message(user_id, f"⚠️ **Telegram Error / Timeout:** {e}", reply_parameters=ReplyParameters(message_id=file_msg.id))
                                 except: pass
                         break
                     await asyncio.sleep(wait_time)

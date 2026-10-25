@@ -31,6 +31,7 @@ License Link : https://github.com/DigitalBotz/Digital-Rename-Bot/blob/main/LICEN
 
 # wzgram imports
 from wzgram import Client, filters
+from wzgram.types import ReplyParameters
 from wzgram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from wzgram.errors import ListenerTimeout
 
@@ -50,7 +51,7 @@ FALSE = [[InlineKeyboardButton('ᴍᴇᴛᴀᴅᴀᴛᴀ ᴏғғ', callback_data
 
 @Client.on_message(filters.private & filters.command('metadata'))
 async def handle_metadata(bot: Client, message: Message):
-    RknDev = await message.reply_text("**Please Wait...**", reply_to_message_id=message.id)
+    RknDev = await message.reply_text("**Please Wait...**", reply_parameters=ReplyParameters(message_id=message.id))
     bool_metadata = await digital_botz.get_metadata_mode(message.from_user.id)
     user_metadata = await digital_botz.get_metadata_code(message.from_user.id)
 
@@ -80,11 +81,11 @@ async def query_metadata(bot: Client, query: CallbackQuery):
         await query.message.delete()
         try:
             metadata = await bot.ask(text=rkn.SEND_METADATA, chat_id=query.from_user.id, filters=filters.text, timeout=30, disable_web_page_preview=True)
-            RknDev = await query.message.reply_text("**Please Wait...**", reply_to_message_id=metadata.id)
+            RknDev = await query.message.reply_text("**Please Wait...**", reply_parameters=ReplyParameters(message_id=metadata.id))
             await digital_botz.set_metadata_code(query.from_user.id, metadata_code=metadata.text)
             await RknDev.edit("**Your Metadata Code Set Successfully ✅**")
         except ListenerTimeout:
-            await query.message.reply_text("⚠️ Error!!\n\n**Request timed out.**\nRestart by using /metadata", reply_to_message_id=query.message.id)
+            await query.message.reply_text("⚠️ Error!!\n\n**Request timed out.**\nRestart by using /metadata", reply_parameters=ReplyParameters(message_id=query.message.id))
         except Exception as e:
             print(e)
 
