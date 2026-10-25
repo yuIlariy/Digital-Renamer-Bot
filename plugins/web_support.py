@@ -33,24 +33,21 @@ last_time = time.time()
 last_up_speed = 0
 last_dl_speed = 0
 
-# --- 24-HOUR ROLLING RENAME TRACKER ---
-recent_renames = deque()
-
 # ⚠️ INVISIBLE HOOK: Intercept Pyrogram's edit message instead of the database!
-# This quietly listens for "Uploaded Successfully" and adds +1 to the dashboard counter.
+# This quietly listens for "Uploaded Successfully" and adds +1 to the database counter.
 if not hasattr(Message, "_hooked_for_renames"):
     original_edit = getattr(Message, "edit", None)
     original_edit_text = getattr(Message, "edit_text", None)
 
     async def hooked_edit_wrapper(self, text, *args, **kwargs):
         if isinstance(text, str) and "Uploaded Successfully" in text:
-            recent_renames.append(time.time())
+            await digital_botz.increment_total_renames()
         if original_edit:
             return await original_edit(self, text, *args, **kwargs)
 
     async def hooked_edit_text_wrapper(self, text, *args, **kwargs):
         if isinstance(text, str) and "Uploaded Successfully" in text:
-            recent_renames.append(time.time())
+            await digital_botz.increment_total_renames()
         if original_edit_text:
             return await original_edit_text(self, text, *args, **kwargs)
 
@@ -61,10 +58,20 @@ if not hasattr(Message, "_hooked_for_renames"):
     
     Message._hooked_for_renames = True
 
+def format_short_number(num):
+    """Formats numbers to 1k, 1.8k, 2.39k formats."""
+    if num < 1000:
+        return str(num)
+    for unit in ['k', 'M', 'B']:
+        num /= 1000.0
+        if num < 1000:
+            formatted = f"{num:.2f}".rstrip('0').rstrip('.')
+            return f"{formatted}{unit}"
+    return str(num)
 
 async def get_status():
     """Fetches and formats system and bot statistics."""
-    global last_net_io, last_time, last_up_speed, last_dl_speed, recent_renames
+    global last_net_io, last_time, last_up_speed, last_dl_speed
     
     # ⚠️ Import directly from the Regular Renamer's tracking dictionaries
     try:
@@ -113,12 +120,9 @@ async def get_status():
         last_net_io = current_net_io
         last_time = current_time
 
-    # --- 24-HOUR ROLLING WINDOW CALCULATION ---
-    # Continuously clean up timestamps older than exactly 86,400 seconds (24 hours)
-    while recent_renames and current_time - recent_renames[0] > 86400:
-        recent_renames.popleft()
-    
-    renames_24h = len(recent_renames)
+    # --- LIFETIME RENAME TRACKER ---
+    raw_total_renames = await digital_botz.get_total_renames()
+    formatted_total_renames = format_short_number(raw_total_renames)
 
     # Restore Lifetime Database Bandwidth
     net_stats = await digital_botz.get_network_stats()
@@ -154,7 +158,7 @@ async def get_status():
         "data_recv": data_recv,
         "up_speed": up_speed_str,
         "dl_speed": dl_speed_str,
-        "renames_24h": renames_24h,
+        "total_renames": formatted_total_renames,
         "total_workers": total_workers,
         "active_workers": active_workers,
         "free_workers": free_workers,
