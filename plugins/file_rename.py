@@ -58,6 +58,34 @@ upload_lock = asyncio.Lock()
 active_tasks = {}
 
 # ==========================================
+# --- LIVE QUEUE PROGRESS MEMORY ---
+# ==========================================
+active_progress = {}
+
+async def custom_progress(current, total, text, message, start, task_id, filename):
+    """Intercepts progress to update the live web dashboard while maintaining Telegram updates."""
+    # 1. Update Global Memory for the Web API
+    percentage = round((current / total) * 100, 2) if total else 0
+    diff = time.time() - start
+    speed = current / diff if diff > 0 else 0
+    
+    active_progress[str(task_id)] = {
+        "filename": filename,
+        "status": "Downloading" if "Down" in text else "Uploading",
+        "percentage": percentage,
+        "speed": f"{humanbytes(speed)}/s" if speed > 0 else "0 B/s",
+        "current": humanbytes(current),
+        "total": humanbytes(total)
+    }
+    
+    # 2. Call original progress to update Telegram UI
+    if message:
+        try:
+            await progress_for_wzgram(current, total, text, message, start)
+        except Exception:
+            pass
+
+# ==========================================
 # --- DYNAMIC ROTATIONAL LOAD BALANCER ---
 # ==========================================
 worker_loads = {} 
@@ -69,18 +97,23 @@ def get_least_busy_worker(main_client):
     if not workers:
         return main_client
     
-    for w in workers:
+    healthy_workers = [w for w in workers if getattr(w, "is_healthy", True)]
+    
+    if not healthy_workers:
+        return main_client
+        
+    for w in healthy_workers:
         if w not in worker_loads:
             worker_loads[w] = 0
             
-    min_load = min(worker_loads[w] for w in workers)
+    min_load = min(worker_loads[w] for w in healthy_workers)
     
-    for i in range(len(workers)):
-        check_index = (last_worker_index + 1 + i) % len(workers)
-        worker = workers[check_index]
+    for i in range(len(healthy_workers)):
+        check_index = (last_worker_index + 1 + i) % len(healthy_workers)
+        worker = healthy_workers[check_index]
         
         if worker_loads[worker] == min_load:
-            last_worker_index = check_index
+            last_worker_index = workers.index(worker)
             return worker
             
     return main_client
@@ -350,12 +383,13 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 else:
                     target_msg = file_msg
 
+                dl_start_time = time.time()
                 dl_path = await asyncio.wait_for(
                     worker_client.download_media(
                         message=target_msg,
                         file_name=file_path,
-                        progress=progress_for_wzgram if rkn_processing else None,
-                        progress_args=(DOWNLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()
+                        progress=custom_progress if rkn_processing else None,
+                        progress_args=(DOWNLOAD_TEXT, rkn_processing, dl_start_time, task_id, new_filename) if rkn_processing else ()
                     ),
                     timeout=7200
                 )
@@ -397,6 +431,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     log_msg_down = None
                     
                 wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
+
+                if isinstance(e, FloodWait) and worker_client != main_client:
+                    worker_client.is_healthy = False
 
                 if len(workers_list) > 1 and worker_client != main_client:
                     worker_loads[worker_client] = max(0, worker_loads.get(worker_client, 0) - 1)
@@ -522,7 +559,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     if not is_main_bot:
                         filw, error = await upload_files(
                             uploader, Config.LOG_CHANNEL, upload_type, file_to_upload, 
-                            ph_path, caption, duration, rkn_processing, new_filename
+                            ph_path, caption, duration, rkn_processing, new_filename, task_id
                         )
                         if error:
                             raise Exception(error)
@@ -555,7 +592,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     else:
                         filw, error = await upload_files(
                             main_client, user_id, upload_type, file_to_upload, 
-                            ph_path, caption, duration, rkn_processing, new_filename
+                            ph_path, caption, duration, rkn_processing, new_filename, task_id
                         )
                         if error:
                             raise Exception(error)
@@ -607,6 +644,10 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 
             except Exception as e:
                 wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
+                
+                if isinstance(e, FloodWait) and uploader != app and not is_main_bot:
+                    uploader.is_healthy = False
+
                 if isinstance(e, FloodWait) and rkn_processing:
                     try: await rkn_processing.delete()
                     except: pass
@@ -646,6 +687,10 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         if str(task_id) in active_tasks:
             del active_tasks[str(task_id)]
             
+        # Clean up global progress tracking
+        if str(task_id) in active_progress:
+            del active_progress[str(task_id)]
+            
         if current_worker != main_client:
             worker_loads[current_worker] = max(0, worker_loads.get(current_worker, 0) - 1)
             
@@ -656,14 +701,18 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         except:
             pass
 
-async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption, duration, rkn_processing, new_filename):
+async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption, duration, rkn_processing, new_filename, task_id):
     try:
+        up_start_time = time.time()
+        p_args = (UPLOAD_TEXT, rkn_processing, up_start_time, task_id, new_filename) if rkn_processing else ()
+        p_func = custom_progress if rkn_processing else None
+        
         if upload_type == "document":
-            filw = await asyncio.wait_for(bot.send_document(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_wzgram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_document(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=p_func, progress_args=p_args), timeout=7200)
         elif upload_type == "video":
-            filw = await asyncio.wait_for(bot.send_video(sender_id, video=file_path, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=progress_for_wzgram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_video(sender_id, video=file_path, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=p_func, progress_args=p_args), timeout=7200)
         elif upload_type == "audio":
-            filw = await asyncio.wait_for(bot.send_audio(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=progress_for_wzgram if rkn_processing else None, progress_args=(UPLOAD_TEXT, rkn_processing, time.time()) if rkn_processing else ()), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_audio(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=p_func, progress_args=p_args), timeout=7200)
         return filw, None
     except asyncio.TimeoutError:
         return None, "TIMEOUT: Upload connection froze and was gracefully aborted."

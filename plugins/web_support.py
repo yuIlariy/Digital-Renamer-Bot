@@ -59,7 +59,6 @@ if not hasattr(Message, "_hooked_for_renames"):
     Message._hooked_for_renames = True
 
 def format_short_number(num):
-    """Formats numbers to 1k, 1.8k, 2.39k formats."""
     if num < 1000:
         return str(num)
     for unit in ['k', 'M', 'B']:
@@ -70,20 +69,15 @@ def format_short_number(num):
     return str(num)
 
 async def get_status():
-    """Fetches and formats system and bot statistics."""
     global last_net_io, last_time, last_up_speed, last_dl_speed
     
-    # ⚠️ Import directly from the Regular Renamer's tracking dictionaries
     try:
         from plugins.file_rename import worker_loads, active_tasks
     except ImportError:
         worker_loads = {}
         active_tasks = {}
     
-    # 📜 Fetch real values from database
     real_total_users = await digital_botz.total_users_count()
-    
-    # 🪄 Apply Magic Boost (Matching your Regular Telegram bot stats)
     total_users = real_total_users + 1009
     
     if getattr(Config, 'PREMIUM_MODE', False):
@@ -92,15 +86,12 @@ async def get_status():
     else:
         total_premium_users = "Disabled ✅"
     
-    # --- UPTIME CALCULATIONS ---
-    # Bot Uptime
     bot_sec = time.time() - Config.BOT_UPTIME
     b_days, b_rem = divmod(bot_sec, 86400)
     b_hrs, b_rem = divmod(b_rem, 3600)
     b_mins, b_secs = divmod(b_rem, 60)
     bot_uptime = f"{int(b_days)}d {int(b_hrs)}h {int(b_mins)}m" if b_days > 0 else f"{int(b_hrs):02d}h{int(b_mins):02d}m{int(b_secs):02d}s"
 
-    # VPS System Uptime
     sys_sec = time.time() - psutil.boot_time()
     s_days, s_rem = divmod(sys_sec, 86400)
     s_hrs, s_rem = divmod(s_rem, 3600)
@@ -112,32 +103,27 @@ async def get_status():
     current_net_io = psutil.net_io_counters()
     current_time = time.time()
     
-    # --- LIVE SPEEDS (Updates every 1 second) ---
-    time_delta = current_time - last_time
-    if time_delta >= 1.0: 
-        last_up_speed = (current_net_io.bytes_sent - last_net_io.bytes_sent) / time_delta
-        last_dl_speed = (current_net_io.bytes_recv - last_net_io.bytes_recv) / time_delta
+    if (current_time - last_time) >= 1.0: 
+        last_up_speed = (current_net_io.bytes_sent - last_net_io.bytes_sent) / (current_time - last_time)
+        last_dl_speed = (current_net_io.bytes_recv - last_net_io.bytes_recv) / (current_time - last_time)
         last_net_io = current_net_io
         last_time = current_time
 
-    # --- LIFETIME RENAME TRACKER ---
     raw_total_renames = await digital_botz.get_total_renames()
     formatted_total_renames = format_short_number(raw_total_renames)
 
-    # Restore Lifetime Database Bandwidth
     net_stats = await digital_botz.get_network_stats()
     data_sent = humanbytes(net_stats.get('sent', 0))
     data_recv = humanbytes(net_stats.get('recv', 0))
 
-    # --- FLEET NODE & ACTIVE TASKS MONITORING ---
-    total_workers = len(getattr(Config, "WORKER_CLIENTS", []))
+    workers = getattr(Config, "WORKER_CLIENTS", [])
+    total_workers = len(workers)
+    healthy_workers = sum(1 for w in workers if getattr(w, "is_healthy", True))
     active_workers = sum(1 for load in worker_loads.values() if load > 0)
-    free_workers = max(0, total_workers - active_workers)
+    free_workers = max(0, healthy_workers - active_workers)
     
-    # Extract processing count from the standard dictionary
     current_active_tasks = len(active_tasks)
     
-    # Safely format speed strings
     up_speed_str = f"{humanbytes(last_up_speed)}/s" if last_up_speed > 0 else "0 B/s"
     dl_speed_str = f"{humanbytes(last_dl_speed)}/s" if last_dl_speed > 0 else "0 B/s"
     
@@ -160,6 +146,7 @@ async def get_status():
         "dl_speed": dl_speed_str,
         "total_renames": formatted_total_renames,
         "total_workers": total_workers,
+        "healthy_workers": healthy_workers, 
         "active_workers": active_workers,
         "free_workers": free_workers,
         "active_tasks": current_active_tasks,
@@ -187,6 +174,46 @@ async def root_route_handler(request):
 async def api_status_handler(request):
     status_data = await get_status()
     return web.json_response(status_data)
+
+# ==========================================
+# --- LIVE QUEUE WITH PROGRESS TRACKING ---
+# ==========================================
+@DigitalRenameBot.get("/api/queue")
+async def api_queue_handler(request):
+    """Exposes live split data for Downloads, Uploads, and Pending Tasks."""
+    try:
+        from helper.database import digital_botz, Task
+        from plugins.file_rename import active_progress
+    except ImportError:
+        return web.json_response({"error": "Cannot load required modules"})
+        
+    try:
+        active_db_tasks = await Task.find_all().to_list()
+        
+        downloading = []
+        uploading = []
+        pending = []
+        
+        for task in active_db_tasks:
+            tid = str(task.id)
+            if tid in active_progress:
+                prog = active_progress[tid]
+                if prog["status"] == "Downloading":
+                    downloading.append(prog)
+                else:
+                    uploading.append(prog)
+            else:
+                pending.append({"filename": task.new_name, "status": "Pending"})
+                
+        return web.json_response({
+            "success": True,
+            "downloading": downloading,
+            "uploading": uploading,
+            "pending": pending
+        })
+    except Exception as e:
+        return web.json_response({"success": False, "error": str(e)})
+
 
 async def web_server():
     web_app = web.Application(client_max_size=30000000)
