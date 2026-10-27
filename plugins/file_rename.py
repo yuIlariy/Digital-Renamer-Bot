@@ -712,7 +712,7 @@ async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption,
         elif upload_type == "video":
             filw = await asyncio.wait_for(bot.send_video(sender_id, video=file_path, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=p_func, progress_args=p_args), timeout=7200)
         elif upload_type == "audio":
-            filw = await asyncio.wait_for(bot.send_audio(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=p_func, progress_args=p_args), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_audio(sender_id, audio=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=p_func, progress_args=p_args), timeout=7200)
         return filw, None
     except asyncio.TimeoutError:
         return None, "TIMEOUT: Upload connection froze and was gracefully aborted."
