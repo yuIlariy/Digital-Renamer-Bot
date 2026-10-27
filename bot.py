@@ -60,6 +60,8 @@ logging.basicConfig(
 #logger = logging.getLogger(__name__)
 
 # --- LOGGING MUZZLES (Method 3) ---
+import hachoir.core.config as hachoir_config
+hachoir_config.quiet = True
 logging.getLogger("wzgram").setLevel(logging.WARNING) # Kept untouched
 logging.getLogger("hachoir").setLevel(logging.ERROR)    # Silences the 2GB ZIP warnings
 logging.getLogger("aiohttp").setLevel(logging.ERROR)    # Silences routine web server logs
@@ -138,6 +140,29 @@ class DigitalRenameBot(Client):
 
 
 digital_instance = DigitalRenameBot()
+
+# ==========================================
+# --- WORKER FLEET HEALTH CHECKER ---
+# ==========================================
+async def worker_health_checker():
+    """Background task to ping all worker clients and update their health status."""
+    while True:
+        try:
+            for wc in Config.WORKER_CLIENTS:
+                try:
+                    await wc.get_me()
+                    wc.is_healthy = True
+                except errors.FloodWait:
+                    wc.is_healthy = False
+                    print(f"⚠️ Worker {wc.name} is currently restricted (FloodWait). Sidelining...")
+                except Exception as e:
+                    wc.is_healthy = False
+                    print(f"⚠️ Worker {wc.name} connection error: {e}. Sidelining...")
+        except Exception as e:
+            print(f"Health Checker Loop Error: {e}")
+        
+        # Ping the fleet every 5 minutes (300 seconds)
+        await asyncio.sleep(300)
 
 # ==========================================
 # --- GLOBAL MIDNIGHT RESET TASK ---
@@ -228,6 +253,7 @@ def main():
                     bot_token=token.strip(), 
                     sleep_threshold=5
                 )
+                wc.is_healthy = True # Default all workers to healthy on startup
                 Config.WORKER_CLIENTS.append(wc)
                 await wc.start()
                 print(f"✅ Worker {i+1} Started")
@@ -243,6 +269,7 @@ def main():
         # --- START BACKGROUND TASKS ---
         asyncio.create_task(premium_expiry_notifier(digital_instance))
         asyncio.create_task(daily_reset_task())
+        asyncio.create_task(worker_health_checker()) # Added Health Checker loop
         # ------------------------------
         
         await idle()
