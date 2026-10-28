@@ -81,7 +81,7 @@ async def custom_progress(current, total, text, message, start, task_id, filenam
     # 2. Call original progress to update Telegram UI
     if message:
         try:
-            await progress_for_wzgram(current, total, text, message, start)
+            asyncio.create_task(progress_for_wzgram(current, total, text, message, start))
         except Exception:
             pass
 
