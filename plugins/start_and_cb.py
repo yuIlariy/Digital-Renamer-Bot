@@ -75,13 +75,13 @@ def format_uptime(seconds: int) -> str:
 
 
 upgrade_button = InlineKeyboardMarkup([[        
-        InlineKeyboardButton('buy premium ✓', user_id=int(6318135266)),
+        InlineKeyboardButton('💳Buy Premium ✓', user_id=int(6318135266)),
          ],[
         InlineKeyboardButton("Bᴀᴄᴋ", callback_data = "start")
 ]])
 
 upgrade_trial_button = InlineKeyboardMarkup([[        
-        InlineKeyboardButton('buy premium ✓', user_id=int(6318135266)),
+        InlineKeyboardButton('💳Buy Premium ✓', user_id=int(6318135266)),
          ],[
         InlineKeyboardButton("ᴛʀɪᴀʟ - 𝟷𝟸 ʜᴏᴜʀs ✓", callback_data = "give_trial"),
         InlineKeyboardButton("Bᴀᴄᴋ", callback_data = "start")
