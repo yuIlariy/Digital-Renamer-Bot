@@ -116,6 +116,10 @@ Send a file to get started.
 """
 
     UPGRADE_PREMIUM = """
+<b>💎 Pʀᴇᴍɪᴜᴍ Pʟᴀɴꜱ</b>
+
+Upgrade to Premium to enjoy high-speed renaming without limits!
+
 •⪼ ★𝘗𝘭𝘢𝘯𝘴    -  ⏳𝘋𝘢𝘵𝘦 - 💸𝘗𝘳𝘪𝘤𝘦  
 •⪼ 🥉𝘉𝘳𝘰𝘯𝘻𝘦   -   3𝘥𝘢𝘺𝘴   -   $0.47  
 •⪼ 🥈𝘚𝘪𝘭𝘷𝘦𝘳   -   7𝘥𝘢𝘺𝘴   -   $0.71  
@@ -125,10 +129,22 @@ Send a file to get started.
 •⪼ ♾️𝘓𝘪𝘧𝘦𝘵𝘪𝘮𝘦  -   ∞   -   $10.00  
 
 🚀 Daily Upload Limit: Unlimited  
-🎁 Discount All Plans: $0.11  
-"""
-    
+
+<b>Features:</b>
+✅ Upload Files up to 4GB+
+✅ No Daily 6GB Limit
+✅ Priority Task Processing
+✅ 24/7 Support
+
+<b>Payment Method:</b>
+Click the <b>Buy Premium</b> button below to pay via <b>Crypto (USDT/BTC/ETH/LTC)</b>.
+Send your User ID after payment!"""
+
     UPGRADE_PLAN = """
+<b>🌟 Cᴜsᴛᴏᴍ Uᴘɢʀᴀᴅᴇ Pʟᴀɴs</b>
+
+Choose the perfect plan tailored to your storage and usage needs!
+
 🌟 𝘗𝘭𝘢𝘯: 𝘗𝘳𝘰  
 📅 𝘋𝘢𝘵𝘦: 1 𝘮𝘰𝘯𝘵𝘩  
 💰 𝘗𝘳𝘪𝘤𝘦: $1.55  
@@ -144,8 +160,15 @@ Send a file to get started.
 💰 𝘗𝘳𝘪𝘤𝘦: $10.00  
 📦 𝘓𝘪𝘮𝘪𝘵: Unlimited  
 
-🎁 - 𝘋𝘪𝘴𝘤𝘰𝘶𝘯𝘵 𝘈𝘭𝘭 𝘗𝘭𝘢𝘯𝘴: $0.11  
-"""
+<b>Features:</b>
+✅ High-Speed Processing
+✅ Upload Files up to 4GB+
+✅ No Daily 6GB Limit
+✅ 24/7 Support
+
+<b>Payment Method:</b>
+Click the <b>Buy Premium</b> button below to pay via <b>Crypto (USDT/BTC/ETH/LTC)</b>.
+Send your User ID after payment!"""
     
     THUMBNAIL = """
 🌌 <b><u>Hᴏᴡ Tᴏ Sᴇᴛ Tʜᴜᴍʙɴɪʟᴇ</u></b>
