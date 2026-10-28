@@ -381,17 +381,11 @@ async def cb_handler(client, query: CallbackQuery):
             reply_markup=InlineKeyboardMarkup([[
                 # ⚠️ DO NOT REMOVE MAIN SOURCE ⚠️
                 InlineKeyboardButton(
-                    "💞 Mᴀɪɴ Sᴏᴜʀᴄᴇ 💞",
+                    "Sᴏᴜʀᴄᴇ Cᴏᴅᴇ",
                     url="https://github.com/DigitalBotz/Digital-Rename-Bot"
                 )
             ],
             [
-                # ✅ Forked source button
-                InlineKeyboardButton(
-                    "🍴 Fᴏʀᴋᴇᴅ Sᴏᴜʀᴄᴇ 🍴",
-                    url="https://github.com/yudurov/Digital-Renamer-Bot"
-                )
-            ],[
                 InlineKeyboardButton("🔒 Cʟᴏꜱᴇ", callback_data="close"),
                 InlineKeyboardButton("◀️ Bᴀᴄᴋ", callback_data="start")
             ]])
