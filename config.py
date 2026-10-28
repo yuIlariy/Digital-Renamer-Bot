@@ -103,7 +103,7 @@ Send a file to get started.
 ├ 🗃️ <b>Data Base:</b> {}
 ├ ☁️ <b>Server:</b> <a href='https://deluxhost.net//'>DeluxHost</a>
 ├ 👨‍💻 <b>Wizard:</b> <a href='https://t.me/xspes'>NAm</a>
-└ 🆕 <b>Version:</b> <a href='https://github.com/yudurov/Digital-Renamer-Bot'>{}</a>
+└ 🆕 <b>Version:</b> <a href='https://github.com/DigitalBotz/Digital-Renamer-Bot'>{}</a>
 
 ✨ <i>Where files transform with magical precision!</i>"""
     
