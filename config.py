@@ -4,7 +4,7 @@
 # Telegram Channel @RknDeveloper & @Rkn_Botz
 # Developer @RknDeveloperr
 # Special Thanks To @ReshamOwner
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees
 """
 Apache License 2.0
 Copyright (c) 2022 @Digital_Botz
@@ -112,7 +112,7 @@ Send a file to get started.
 
 ✏️ <b><u>Hᴏᴡ Tᴏ Rᴇɴᴀᴍᴇ A Fɪʟᴇ</u></b>
 <b>•></b> Sᴇɴᴅ Aɴy Fɪʟᴇ Aɴᴅ Tyᴩᴇ Nᴇᴡ Fɪʟᴇ Nɴᴀᴍᴇ \nAɴᴅ Aᴇʟᴇᴄᴛ Tʜᴇ Fᴏʀᴍᴀᴛ [ document, video, audio ].           
-ℹ️ 𝗔𝗻𝘆 𝗢𝘁𝗵𝗲𝗿 𝗛𝗲𝗹𝗽 𝗖𝗼𝗻𝘁𝗮𝗰𝘁 :- <a href=https://t.me/DigitalBotz_Support>𝑺𝑼𝑷𝑷𝑶𝑹𝑻 𝑮𝑹𝑶𝑼𝑷</a>
+ℹ️ 𝗔𝗻𝘆 𝗢𝘁𝗵𝗲𝗿 𝗛𝗲𝗹𝗽 𝗖𝗼𝗻𝘁𝗮𝗰𝘁 :- <a href=https://t.me/OthersBees>𝑺𝑼𝑷𝑷𝑶𝑹𝑻 𝑮𝑹𝑶𝑼𝑷</a>
 """
 
     UPGRADE_PREMIUM = """
@@ -200,7 +200,7 @@ Exᴀᴍᴩʟᴇ:- `/set_caption 📕 Fɪʟᴇ Nᴀᴍᴇ: {filename}
 --change-subtitle-title @OtherBs
 --change-author @OtherBs`
 
-📥 Fᴏʀ Hᴇʟᴘ Cᴏɴᴛ. @DigitalBotz_Support
+📥 Fᴏʀ Hᴇʟᴘ Cᴏɴᴛ. @OthersBees
 """
     
     CUSTOM_FILE_NAME = """
@@ -244,7 +244,7 @@ Exᴀᴍᴩʟᴇ:- `/set_prefix @OtherBs`
 --change-subtitle-title @OtherBs
 --change-author @OtherBs`
 
-📥 Fᴏʀ Hᴇʟᴘ Cᴏɴᴛ. @DigitalBotz_Support
+📥 Fᴏʀ Hᴇʟᴘ Cᴏɴᴛ. @OthersBees
 """
     
     RKN_PROGRESS = """<b>
@@ -268,4 +268,4 @@ Exᴀᴍᴩʟᴇ:- `/set_prefix @OtherBs`
 # Don't Remove Credit 😔
 # Telegram Channel @RknDeveloper & @Rkn_Botz
 # Developer @RknDeveloperr
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees

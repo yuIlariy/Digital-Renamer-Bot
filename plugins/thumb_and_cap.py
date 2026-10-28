@@ -4,7 +4,7 @@
 # Telegram Channel @RknDeveloper & @Rkn_Botz & @Rkn_Bots_Updates
 # Developer @RknDeveloperr
 # Special Thanks To @ReshamOwner
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees
 """
 Apache License 2.0
 Copyright (c) 2022 @Digital_Botz
@@ -92,4 +92,4 @@ async def addthumbs(client, message):
 # Don't Remove Credit 😔
 # Telegram Channel @RknDeveloper & @Rkn_Botz
 # Developer @RknDeveloperr
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees

@@ -4,7 +4,7 @@
 # Telegram Channel @RknDeveloper & @Rkn_Botz
 # Developer @RknDeveloperr
 # Special Thanks To @ReshamOwner
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees
 """
 Apache License 2.0
 Copyright (c) 2022 @Digital_Botz
@@ -99,7 +99,7 @@ async def start(client, message):
 
     start_button = [[
         InlineKeyboardButton('Uᴩᴅᴀ𝚃ᴇꜱ', url='https://t.me/OtherBs'),
-        InlineKeyboardButton('Sᴜᴩᴩᴏʀ𝚃', url='https://t.me/DigitalBotz_Support')
+        InlineKeyboardButton('Sᴜᴩᴩᴏʀ𝚃', url='https://t.me/OthersBees')
     ],[
         InlineKeyboardButton('Aʙᴏυᴛ', callback_data='about'),
         InlineKeyboardButton('Hᴇʟᴩ', callback_data='help')
@@ -245,7 +245,7 @@ async def cb_handler(client, query: CallbackQuery):
     if data == "start":
         start_button = [[        
             InlineKeyboardButton('Uᴩᴅᴀ𝚃ᴇꜱ', url='https://t.me/OtherBs'),
-            InlineKeyboardButton('Sᴜᴩᴩᴏʀ𝚃', url='https://t.me/DigitalBotz_Support')
+            InlineKeyboardButton('Sᴜᴩᴩᴏʀ𝚃', url='https://t.me/OthersBees')
         ],[
             InlineKeyboardButton('Aʙᴏυᴛ', callback_data='about'),
             InlineKeyboardButton('Hᴇʟᴩ', callback_data='help')       

@@ -4,7 +4,7 @@
 # Telegram Channel @RknDeveloper & @Rkn_Botz
 # Developer @RknDeveloperr
 # Special Thanks To (https://github.com/JayMahakal98) & @ReshamOwner
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees
 
 """
 Apache License 2.0
@@ -257,4 +257,4 @@ def metadata_text(metadata_text):
 # Telegram Channel @RknDeveloper & @Rkn_Botz
 # Developer @RknDeveloperr
 # Special Thanks To @ReshamOwner
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees

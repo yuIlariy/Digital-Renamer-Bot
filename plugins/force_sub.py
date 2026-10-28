@@ -103,4 +103,4 @@ async def global_cb_gatekeeper(client, query):
             pass
 
 # (c) @RknDeveloperr
-# Update Channel @Digital_Botz & @DigitalBotz_Support
+# Update Channel @Digital_Botz & @OthersBees
