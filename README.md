@@ -11,10 +11,10 @@
 
 <p align="center">
 
-![Fork](https://img.shields.io/github/forks/Yuilariy/Digital-Rename-Bot?style=for-the-badge)
-![Stars](https://img.shields.io/github/stars/Yuilariy/Digital-Rename-Bot?color=%23&style=for-the-badge)
-![License](https://img.shields.io/github/license/Yuilariy/Digital-Rename-Bot?style=for-the-badge)
-![Issues](https://img.shields.io/github/issues/Yuilariy/Digital-Rename-Bot?style=for-the-badge)
+![Fork](https://img.shields.io/github/forks/Yuilariy/Digital-Renamer-Bot?style=for-the-badge)
+![Stars](https://img.shields.io/github/stars/Yuilariy/Digital-Renamer-Bot?color=%23&style=for-the-badge)
+![License](https://img.shields.io/github/license/Yuilariy/Digital-Renamer-Bot?style=for-the-badge)
+![Issues](https://img.shields.io/github/issues/Yuilariy/Digital-Renamer-Bot?style=for-the-badge)
 
 </p>
 
@@ -22,7 +22,7 @@
 ### Sᴀᴍᴩʟᴇ Bᴏᴛ (Official Digital Rename Bot)
 
 * [4GB_RenameBot](https://t.me/digitalfilesrenamebot)
-* [Digital_Rename_Bot](http://t.me/Digital_Rename_Bot)
+
 
 
 ## Deploy Me 🥀
