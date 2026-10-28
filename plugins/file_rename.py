@@ -64,7 +64,7 @@ active_progress = {}
 
 async def custom_progress(current, total, text, message, start, task_id, filename):
     """Intercepts progress to update the live web dashboard while maintaining Telegram updates."""
-    # 1. Update Global Memory for the Web API
+    # 1. Update Global Memory for the Web API (Unconditional)
     percentage = round((current / total) * 100, 2) if total else 0
     diff = time.time() - start
     speed = current / diff if diff > 0 else 0
@@ -388,8 +388,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     worker_client.download_media(
                         message=target_msg,
                         file_name=file_path,
-                        progress=custom_progress if rkn_processing else None,
-                        progress_args=(DOWNLOAD_TEXT, rkn_processing, dl_start_time, task_id, new_filename) if rkn_processing else ()
+                        progress=custom_progress,
+                        progress_args=(DOWNLOAD_TEXT, rkn_processing, dl_start_time, task_id, new_filename)
                     ),
                     timeout=7200
                 )
@@ -556,30 +556,41 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     except Exception: pass
 
                 async def perform_upload():
-                    if not is_main_bot:
-                        filw, error = await upload_files(
-                            uploader, Config.LOG_CHANNEL, upload_type, file_to_upload, 
-                            ph_path, caption, duration, rkn_processing, new_filename, task_id
-                        )
-                        if error:
-                            raise Exception(error)
-                        
-                        if filw:
-                            await asyncio.sleep(1.5)
-                            delivered = False
-                            while not delivered:
-                                try:
-                                    await main_client.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
-                                    delivered = True
-                                except FloodWait as fw:
-                                    await asyncio.sleep(fw.value)
-                                except Exception:
-                                    try:
-                                        await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
-                                        delivered = True
-                                    except Exception:
-                                        delivered = True 
+                    filw = None
+                    try:
+                        if not is_main_bot:
+                            filw, error = await upload_files(
+                                uploader, Config.LOG_CHANNEL, upload_type, file_to_upload, 
+                                ph_path, caption, duration, rkn_processing, new_filename, task_id
+                            )
+                            if error:
+                                raise Exception(error)
                             
+                            if filw:
+                                await asyncio.sleep(1.5)
+                                delivered = False
+                                while not delivered:
+                                    try:
+                                        await main_client.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
+                                        delivered = True
+                                    except FloodWait as fw:
+                                        await asyncio.sleep(fw.value)
+                                    except Exception:
+                                        try:
+                                            await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
+                                            delivered = True
+                                        except Exception:
+                                            delivered = True 
+                        else:
+                            filw, error = await upload_files(
+                                main_client, user_id, upload_type, file_to_upload, 
+                                ph_path, caption, duration, rkn_processing, new_filename, task_id
+                            )
+                            if error:
+                                raise Exception(error)
+                    finally:
+                        # 🧹 UNCONDITIONAL UPLOAD CACHE CLEANUP
+                        if filw and not is_main_bot:
                             for attempt in range(3):
                                 try:
                                     await main_client.delete_messages(Config.LOG_CHANNEL, filw.id)
@@ -589,13 +600,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         await uploader.delete_messages(Config.LOG_CHANNEL, filw.id)
                                         break
                                     except Exception: pass
-                    else:
-                        filw, error = await upload_files(
-                            main_client, user_id, upload_type, file_to_upload, 
-                            ph_path, caption, duration, rkn_processing, new_filename, task_id
-                        )
-                        if error:
-                            raise Exception(error)
 
                 if uploader == app:
                     if rkn_processing:
@@ -684,6 +688,11 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
         await digital_botz.delete_task(task_id)
 
     finally:
+        # 🧹 UNCONDITIONAL DOWNLOAD CACHE CLEANUP
+        if log_msg_down:
+            try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
+            except Exception: pass
+            
         if str(task_id) in active_tasks:
             del active_tasks[str(task_id)]
             
@@ -704,15 +713,15 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption, duration, rkn_processing, new_filename, task_id):
     try:
         up_start_time = time.time()
-        p_args = (UPLOAD_TEXT, rkn_processing, up_start_time, task_id, new_filename) if rkn_processing else ()
-        p_func = custom_progress if rkn_processing else None
+        active_prog = custom_progress
+        active_args = (UPLOAD_TEXT, rkn_processing, up_start_time, task_id, new_filename)
         
         if upload_type == "document":
-            filw = await asyncio.wait_for(bot.send_document(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=p_func, progress_args=p_args), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_document(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=active_prog, progress_args=active_args), timeout=7200)
         elif upload_type == "video":
-            filw = await asyncio.wait_for(bot.send_video(sender_id, video=file_path, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=p_func, progress_args=p_args), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_video(sender_id, video=file_path, file_name=new_filename, caption=caption, thumb=ph_path, duration=duration, progress=active_prog, progress_args=active_args), timeout=7200)
         elif upload_type == "audio":
-            filw = await asyncio.wait_for(bot.send_audio(sender_id, audio=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=p_func, progress_args=p_args), timeout=7200)
+            filw = await asyncio.wait_for(bot.send_audio(sender_id, audio=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=active_prog, progress_args=active_args), timeout=7200)
         return filw, None
     except asyncio.TimeoutError:
         return None, "TIMEOUT: Upload connection froze and was gracefully aborted."
