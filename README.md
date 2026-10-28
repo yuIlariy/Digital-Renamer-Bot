@@ -19,7 +19,7 @@
 </p>
 
 
-### Sᴀᴍᴩʟᴇ Bᴏᴛ (Official Digital Rename Bot)
+### Sᴀᴍᴩʟᴇ Bᴏᴛ
 
 * [4GB_RenameBot](https://t.me/digitalfilesrenamebot)
 
