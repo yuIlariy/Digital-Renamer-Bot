@@ -62,6 +62,45 @@ active_tasks = {}
 # ==========================================
 active_progress = {}
 
+# ==========================================
+# --- SILENT MODE UI WRAPPER ---
+# ==========================================
+class SilentUIMessage:
+    """Wraps Pyrogram messages to silently drop the UI on >15s FloodWaits without breaking the backend."""
+    def __init__(self, message):
+        self._msg = message
+        self.silent = False
+
+    def __getattr__(self, name):
+        if self._msg:
+            return getattr(self._msg, name)
+        return None
+
+    async def edit(self, text=None, *args, **kwargs):
+        if self.silent or not self._msg:
+            return
+        content = text if text else kwargs.get("text", "")
+        try:
+            await self._msg.edit(content, *args, **kwargs)
+        except FloodWait as e:
+            if e.value > 15:
+                self.silent = True
+                try: await self._msg.delete()
+                except: pass
+                self._msg = None
+            else:
+                await asyncio.sleep(e.value)
+                try: await self._msg.edit(content, *args, **kwargs)
+                except: pass
+        except Exception:
+            pass
+
+    async def delete(self, *args, **kwargs):
+        if self._msg and not self.silent:
+            try: await self._msg.delete(*args, **kwargs)
+            except: pass
+            self._msg = None
+
 async def custom_progress(current, total, text, message, start, task_id, filename):
     """Intercepts progress to update the live web dashboard while maintaining Telegram updates."""
     # 1. Update Global Memory for the Web API (Unconditional)
@@ -78,8 +117,8 @@ async def custom_progress(current, total, text, message, start, task_id, filenam
         "total": humanbytes(total)
     }
     
-    # 2. Call original progress to update Telegram UI
-    if message:
+    # 2. Call original progress to update Telegram UI (Handled safely via SilentUIMessage)
+    if message and getattr(message, 'silent', False) == False:
         try:
             asyncio.create_task(progress_for_wzgram(current, total, text, message, start))
         except Exception:
@@ -97,6 +136,12 @@ def get_least_busy_worker(main_client):
     if not workers:
         return main_client
     
+    now = time.time()
+    for w in workers:
+        if not getattr(w, "is_healthy", True):
+            if now > getattr(w, "unhealthy_until", 0):
+                w.is_healthy = True
+
     healthy_workers = [w for w in workers if getattr(w, "is_healthy", True)]
     
     if not healthy_workers:
@@ -314,7 +359,7 @@ async def doc(client, update):
     active_tasks[str(task_id)] = task_obj
 
 
-async def process_single_file(main_client, worker_client, user_id, file_msg, new_filename_, upload_type, task_id, rkn_processing):
+async def process_single_file(main_client, worker_client, user_id, file_msg, new_filename_, upload_type, task_id, raw_processing_msg):
     current_worker = worker_client 
     dl_path = None
     file_path = None
@@ -324,6 +369,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
     
     task_renames_dir = f"Renames/{task_id}"
     task_meta_dir = f"Metadata/{task_id}"
+    
+    rkn_processing = SilentUIMessage(raw_processing_msg) if raw_processing_msg else None
     
     try:
         await digital_botz.update_task_status(task_id, "processing")
@@ -424,17 +471,34 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 return
                 
             except Exception as e:
+                wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
+
+                if isinstance(e, FloodWait) and worker_client != main_client:
+                    if e.value > 15:
+                        worker_client.is_healthy = False
+                        worker_client.unhealthy_until = time.time() + e.value
+                        
+                        if len(workers_list) > 1:
+                            worker_loads[worker_client] = max(0, worker_loads.get(worker_client, 0) - 1)
+                            worker_client = get_least_busy_worker(main_client)
+                            worker_loads[worker_client] = worker_loads.get(worker_client, 0) + 1
+                            current_worker = worker_client 
+                            
+                            if log_msg_down:
+                                try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
+                                except Exception: pass
+                                log_msg_down = None
+                                
+                            continue # Immediate drop and switch 
+                    else:
+                        worker_client.is_healthy = False
+
                 attempts += 1
                 if worker_client != main_client and log_msg_down:
                     try: await main_client.delete_messages(Config.LOG_CHANNEL, log_msg_down.id)
                     except Exception: pass
                     log_msg_down = None
                     
-                wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
-
-                if isinstance(e, FloodWait) and worker_client != main_client:
-                    worker_client.is_healthy = False
-
                 if len(workers_list) > 1 and worker_client != main_client:
                     worker_loads[worker_client] = max(0, worker_loads.get(worker_client, 0) - 1)
                     worker_client = get_least_busy_worker(main_client)
@@ -574,6 +638,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         await main_client.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
                                         delivered = True
                                     except FloodWait as fw:
+                                        if fw.value > 15:
+                                            break # Silent abort on heavy delivery limit
                                         await asyncio.sleep(fw.value)
                                     except Exception:
                                         try:
@@ -650,7 +716,20 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 wait_time = getattr(e, 'value', 5) if isinstance(e, FloodWait) else 5
                 
                 if isinstance(e, FloodWait) and uploader != app and not is_main_bot:
-                    uploader.is_healthy = False
+                    if e.value > 15:
+                        uploader.is_healthy = False
+                        uploader.unhealthy_until = time.time() + e.value
+                        
+                        if len(workers_list) > 1:
+                            worker_loads[uploader] = max(0, worker_loads.get(uploader, 0) - 1)
+                            uploader = get_least_busy_worker(main_client)
+                            worker_loads[uploader] = worker_loads.get(uploader, 0) + 1
+                            current_worker = uploader
+                            is_main_bot = (uploader == main_client)
+                            
+                            continue # Immediate drop and switch 
+                    else:
+                        uploader.is_healthy = False
 
                 if isinstance(e, FloodWait) and rkn_processing:
                     try: await rkn_processing.delete()
