@@ -490,8 +490,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                 log_msg_down = None
                                 
                             continue # Immediate drop and switch 
-                    else:
-                        worker_client.is_healthy = False
 
                 attempts += 1
                 if worker_client != main_client and log_msg_down:
@@ -638,13 +636,19 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         await main_client.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
                                         delivered = True
                                     except FloodWait as fw:
-                                        if fw.value > 15:
-                                            break # Silent abort on heavy delivery limit
-                                        await asyncio.sleep(fw.value)
+                                        if fw.value > 15 and rkn_processing:
+                                            try: await rkn_processing.delete()
+                                            except: pass
+                                        await asyncio.sleep(fw.value) # 🔥 FIX: Safely sleep and wait to deliver
                                     except Exception:
                                         try:
                                             await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
                                             delivered = True
+                                        except FloodWait as fw:
+                                            if fw.value > 15 and rkn_processing:
+                                                try: await rkn_processing.delete()
+                                                except: pass
+                                            await asyncio.sleep(fw.value) # 🔥 FIX: Safely sleep and wait to deliver fallback
                                         except Exception:
                                             delivered = True 
                         else:
@@ -728,8 +732,6 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                             is_main_bot = (uploader == main_client)
                             
                             continue # Immediate drop and switch 
-                    else:
-                        uploader.is_healthy = False
 
                 if isinstance(e, FloodWait) and rkn_processing:
                     try: await rkn_processing.delete()
@@ -805,6 +807,6 @@ async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption,
     except asyncio.TimeoutError:
         return None, "TIMEOUT: Upload connection froze and was gracefully aborted."
     except FloodWait as fw:
-        return None, f"FLOODWAIT:{fw.value}"
+        raise fw # 🔥 FIX: Propagate exactly as a FloodWait instance so the worker switch triggers
     except Exception as e:
         return None, str(e)
