@@ -37,6 +37,7 @@ import random
 
 # wzgram imports
 from wzgram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from wzgram.enums import ButtonStyle
 
 
 def get_speed_icon(speed_bps):
@@ -109,7 +110,7 @@ async def progress_for_wzgram(current, total, ud_type, message, start):
             await message.edit(
                 text=f"{ud_type}\n\n{tmp}",
                 reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("✖️ 𝙲𝙰𝙽𝙲ᴇʟ ✖️", callback_data="close")]]
+                    [[InlineKeyboardButton("✖️ 𝙲𝙰𝙽𝙲ᴇʟ ✖️", callback_data="close", style=ButtonStyle.DANGER)]]
                 )
             )
         except:
