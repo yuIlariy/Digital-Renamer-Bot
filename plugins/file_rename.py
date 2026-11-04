@@ -22,7 +22,7 @@ copies or substantial portions of the Software.
 # wzgram imports
 from wzgram import Client, filters
 from wzgram.types import ReplyParameters
-from wzgram.enums import MessageMediaType
+from wzgram.enums import MessageMediaType, ButtonStyle
 from wzgram.errors import FloodWait, MessageIdInvalid
 from wzgram.file_id import FileId
 from wzgram.types import InlineKeyboardButton, InlineKeyboardMarkup, ForceReply
@@ -277,7 +277,7 @@ async def rename_start(client, message):
                 f"📦 Media Size: {filesize}\n"
                 f"📊 Your Used Daily Limit: {humanbytes(used)}\n\n"
                 f"You have only **{humanbytes(remain)}** left.\nPlease, Buy Premium Plan.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🪪 UᴘɢʀᴀᴅE", callback_data="upgrade")]])
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🪪 UᴘɢʀᴀᴅE", callback_data="upgrade", style=ButtonStyle.SUCCESS)]])
             )
 
     if await digital_botz.has_premium_access(user_id) and client.premium:
@@ -292,7 +292,7 @@ async def rename_start(client, message):
             await send_media_info()
     else:
         if rkn_file.file_size > 2000 * 1024 * 1024 and client.premium:
-            btn = [[InlineKeyboardButton("💎 Vɪᴇᴡ Pʀᴇᴍɪᴜᴍ Pʟᴀɴꜱ", callback_data="upgrade")]]
+            btn = [[InlineKeyboardButton("💎 Vɪᴇᴡ Pʀᴇᴍɪᴜᴍ Pʟᴀɴꜱ", callback_data="upgrade", style=ButtonStyle.SUCCESS)]]
             return await message.reply_text(
                 "⚠️ **Fɪʟᴇ Tᴏᴏ Lᴀʀɢᴇ!**\n\nFree users can only rename files up to **2GB**.\nUpgrade to Premium to upload files up to **4GB+**!",
                 reply_markup=InlineKeyboardMarkup(btn)
@@ -322,11 +322,11 @@ async def refunc(client, message):
             new_name = new_name + "." + extn
         await reply_message.delete()
 
-        button = [[InlineKeyboardButton("📁 Dᴏᴄᴜᴍᴇɴᴛ",callback_data = "upload_document")]]
+        button = [[InlineKeyboardButton("📁 Dᴏᴄᴜᴍᴇɴᴛ", callback_data="upload_document", style=ButtonStyle.PRIMARY)]]
         if file.media in [MessageMediaType.VIDEO, MessageMediaType.DOCUMENT]:
-            button.append([InlineKeyboardButton("🎥 Vɪᴅᴇᴏ", callback_data = "upload_video")])
+            button.append([InlineKeyboardButton("🎥 Vɪᴅᴇᴏ", callback_data="upload_video", style=ButtonStyle.PRIMARY)])
         elif file.media == MessageMediaType.AUDIO:
-            button.append([InlineKeyboardButton("🎵 Aᴜᴅɪᴏ", callback_data = "upload_audio")])
+            button.append([InlineKeyboardButton("🎵 Aᴜᴅɪᴏ", callback_data="upload_audio", style=ButtonStyle.PRIMARY)])
         await message.reply(
             text=f"**Sᴇʟᴇᴄᴛ Tʜᴇ Oᴜᴛᴩᴜᴛ Fɪʟᴇ Tyᴩᴇ**\n**• Fɪʟᴇ Nᴀᴍᴇ :-**`{new_name}`",
             reply_parameters=ReplyParameters(message_id=file.id),
@@ -490,6 +490,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                 log_msg_down = None
                                 
                             continue # Immediate drop and switch 
+                    else:
+                        worker_client.is_healthy = False
 
                 attempts += 1
                 if worker_client != main_client and log_msg_down:
@@ -636,19 +638,13 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                                         await main_client.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
                                         delivered = True
                                     except FloodWait as fw:
-                                        if fw.value > 15 and rkn_processing:
-                                            try: await rkn_processing.delete()
-                                            except: pass
-                                        await asyncio.sleep(fw.value) # 🔥 FIX: Safely sleep and wait to deliver
+                                        if fw.value > 15:
+                                            break # Silent abort on heavy delivery limit
+                                        await asyncio.sleep(fw.value)
                                     except Exception:
                                         try:
                                             await uploader.copy_message(user_id, Config.LOG_CHANNEL, filw.id)
                                             delivered = True
-                                        except FloodWait as fw:
-                                            if fw.value > 15 and rkn_processing:
-                                                try: await rkn_processing.delete()
-                                                except: pass
-                                            await asyncio.sleep(fw.value) # 🔥 FIX: Safely sleep and wait to deliver fallback
                                         except Exception:
                                             delivered = True 
                         else:
@@ -732,6 +728,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                             is_main_bot = (uploader == main_client)
                             
                             continue # Immediate drop and switch 
+                    else:
+                        uploader.is_healthy = False
 
                 if isinstance(e, FloodWait) and rkn_processing:
                     try: await rkn_processing.delete()
@@ -807,6 +805,6 @@ async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption,
     except asyncio.TimeoutError:
         return None, "TIMEOUT: Upload connection froze and was gracefully aborted."
     except FloodWait as fw:
-        raise fw # 🔥 FIX: Propagate exactly as a FloodWait instance so the worker switch triggers
+        return None, f"FLOODWAIT:{fw.value}"
     except Exception as e:
         return None, str(e)
