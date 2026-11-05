@@ -108,21 +108,34 @@ async def custom_progress(current, total, text, message, start, task_id, filenam
     diff = time.time() - start
     speed = current / diff if diff > 0 else 0
     
-    active_progress[str(task_id)] = {
+    task_key = str(task_id)
+    
+    # Fetch previous UI update time to maintain state across chunks
+    last_ui_update = 0
+    if task_key in active_progress:
+        last_ui_update = active_progress[task_key].get("last_ui_update", 0)
+
+    active_progress[task_key] = {
         "filename": filename,
         "status": "Downloading" if "Down" in text else "Uploading",
         "percentage": percentage,
         "speed": f"{humanbytes(speed)}/s" if speed > 0 else "0 B/s",
         "current": humanbytes(current),
-        "total": humanbytes(total)
+        "total": humanbytes(total),
+        "last_ui_update": last_ui_update  # Preserve state
     }
     
-    # 2. Call original progress to update Telegram UI (Handled safely via SilentUIMessage)
-    if message and getattr(message, 'silent', False) == False:
-        try:
-            asyncio.create_task(progress_for_wzgram(current, total, text, message, start))
-        except Exception:
-            pass
+    # 2. Call original progress to update Telegram UI with a strict 2-second throttle
+    now = time.time()
+    if (now - last_ui_update) >= 3.0 or current == total:
+        active_progress[task_key]["last_ui_update"] = now  # Update trigger time
+        
+        if message and getattr(message, 'silent', False) == False:
+            try:
+                # Task flooding is now prevented; safe to spawn
+                asyncio.create_task(progress_for_wzgram(current, total, text, message, start))
+            except Exception:
+                pass
 
 # ==========================================
 # --- DYNAMIC ROTATIONAL LOAD BALANCER ---
