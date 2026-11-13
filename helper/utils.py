@@ -37,6 +37,7 @@ import random
 
 # wzgram imports
 from wzgram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from wzgram.enums import ButtonStyle
 
 
 def get_speed_icon(speed_bps):
@@ -61,26 +62,26 @@ async def progress_for_wzgram(current, total, ud_type, message, start):
     if total <= 0:
         return
 
-    if round(diff % 5.00) == 0 or current == total:
-        percentage = current * 100 / total
-        speed = current / diff
-        speed_icon = get_speed_icon(speed)
-        elapsed_time = round(diff) * 1000
-        time_to_completion = round((total - current) / speed) * 1000 if speed > 0 else 0
-        estimated_total_time = elapsed_time + time_to_completion
+    # Throttling is now strictly handled by custom_progress in the main file
+    percentage = current * 100 / total
+    speed = current / diff
+    speed_icon = get_speed_icon(speed)
+    elapsed_time = round(diff) * 1000
+    time_to_completion = round((total - current) / speed) * 1000 if speed > 0 else 0
+    estimated_total_time = elapsed_time + time_to_completion
 
-        elapsed_time = TimeFormatter(milliseconds=elapsed_time)
-        estimated_total_time = TimeFormatter(milliseconds=estimated_total_time)
+    elapsed_time = TimeFormatter(milliseconds=elapsed_time)
+    estimated_total_time = TimeFormatter(milliseconds=estimated_total_time)
 
-        progress_bar = "{0}{1}".format(
-            ''.join(["▣" for _ in range(math.floor(percentage / 5))]),
-            ''.join(["▢" for _ in range(20 - math.floor(percentage / 5))])
-        )
+    progress_bar = "{0}{1}".format(
+        ''.join(["▣" for _ in range(math.floor(percentage / 5))]),
+        ''.join(["▢" for _ in range(20 - math.floor(percentage / 5))])
+    )
 
-        # Static footer (Option A)
-        footer = "╰━━━━━━━━━━━━━━━━➣"
+    # Static footer (Option A)
+    footer = "╰━━━━━━━━━━━━━━━━➣"
 
-        progress_template = f"""<b>
+    progress_template = f"""<b>
 ╭━━━❰ᴘʀᴏɢʀᴇss ʙᴀʀ❱━━➣
 
 ┃    🗂️ ᴄᴏᴍᴘʟᴇᴛᴇᴅ: {{1}}
@@ -96,24 +97,24 @@ async def progress_for_wzgram(current, total, ud_type, message, start):
 {footer}
 </b>"""
 
-        tmp = progress_bar + progress_template.format(
-            round(percentage, 2),
-            humanbytes(current),
-            humanbytes(total),
-            speed_icon,
-            estimated_total_time,
-            humanbytes(speed)
-        )
+    tmp = progress_bar + progress_template.format(
+        round(percentage, 2),
+        humanbytes(current),
+        humanbytes(total),
+        speed_icon,
+        estimated_total_time,
+        humanbytes(speed)
+    )
 
-        try:
-            await message.edit(
-                text=f"{ud_type}\n\n{tmp}",
-                reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("✖️ 𝙲𝙰𝙽𝙲ᴇʟ ✖️", callback_data="close")]]
-                )
+    try:
+        await message.edit(
+            text=f"{ud_type}\n\n{tmp}",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("✖️ 𝙲𝙰𝙽𝙲ᴇʟ ✖️", callback_data="close", style=ButtonStyle.DANGER)]]
             )
-        except:
-            pass
+        )
+    except:
+        pass
 
 
 def humanbytes(size):
