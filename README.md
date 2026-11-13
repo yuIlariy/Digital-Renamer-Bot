@@ -52,7 +52,7 @@
  * Clone the Repo.
 
 ```
-git clone https://github.com/yudurov/Digital-Renamer-Bot
+git clone https://github.com/yuilariy/Digital-Renamer-Bot
 ```
  * Move to the Repo Folder in the VPS.
 
