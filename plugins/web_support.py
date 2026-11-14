@@ -15,7 +15,8 @@ import time
 import psutil
 import shutil
 import os
-from collections import deque
+import json
+import asyncio
 from config import Config
 from plugins import __version__
 from helper.utils import humanbytes
@@ -30,11 +31,21 @@ DigitalRenameBot = web.RouteTableDef()
 # --- NETWORK SPEED TRACKER GLOBALS ---
 last_net_io = psutil.net_io_counters()
 last_time = time.time()
-last_up_speed = 0
-last_dl_speed = 0
+last_up_speed = 0.0
+last_dl_speed = 0.0
 
-# ⚠️ INVISIBLE HOOK: Intercept Pyrogram's edit message instead of the database!
-# This quietly listens for "Uploaded Successfully" and adds +1 to the database counter.
+# --- DB QUERY TTL CACHE (Reduces MongoDB load on rapid stream ticks) ---
+_db_cache = {
+    "timestamp": 0.0,
+    "ttl": 15.0,
+    "real_total_users": 0,
+    "real_total_premium_users": 0,
+    "raw_total_renames": 0,
+    "net_stats": {"sent": 0, "recv": 0}
+}
+
+# ⚠️ INVISIBLE HOOK: Intercept Pyrogram/wzgram edit message instead of the database!
+# Quietly listens for "Uploaded Successfully" and adds +1 to the database counter.
 if not hasattr(Message, "_hooked_for_renames"):
     original_edit = getattr(Message, "edit", None)
     original_edit_text = getattr(Message, "edit_text", None)
@@ -55,10 +66,12 @@ if not hasattr(Message, "_hooked_for_renames"):
         Message.edit = hooked_edit_wrapper
     if original_edit_text:
         Message.edit_text = hooked_edit_text_wrapper
-    
+
     Message._hooked_for_renames = True
 
+
 def format_short_number(num):
+    """Formats numbers to 1k, 1.8k, 2.39k formats."""
     if num < 1000:
         return str(num)
     for unit in ['k', 'M', 'B']:
@@ -68,65 +81,170 @@ def format_short_number(num):
             return f"{formatted}{unit}"
     return str(num)
 
-async def get_status():
+
+def parse_human_bytes(size_str):
+    """Parses human-readable byte strings (e.g., '12.50 MB/s') back to float bytes."""
+    if not size_str or not isinstance(size_str, str):
+        return 0.0
+    clean = size_str.replace("/s", "").strip()
+    parts = clean.split()
+    if len(parts) != 2:
+        return 0.0
+    try:
+        val = float(parts[0])
+    except ValueError:
+        return 0.0
+    unit = parts[1].upper()
+    multipliers = {
+        "B": 1,
+        "KB": 1024, "KIB": 1024,
+        "MB": 1024 ** 2, "MIB": 1024 ** 2,
+        "GB": 1024 ** 3, "GIB": 1024 ** 3,
+        "TB": 1024 ** 4, "TIB": 1024 ** 4,
+    }
+    return val * multipliers.get(unit, 1)
+
+
+def format_eta(current_str, total_str, speed_str):
+    """Calculates human-readable ETA from formatted progress strings."""
+    speed_bps = parse_human_bytes(speed_str)
+    if speed_bps <= 0:
+        return "Calculating..."
+    current_b = parse_human_bytes(current_str)
+    total_b = parse_human_bytes(total_str)
+    remaining_b = max(0.0, total_b - current_b)
+    if remaining_b <= 0:
+        return "Finishing..."
+    rem_sec = int(remaining_b / speed_bps)
+    if rem_sec < 60:
+        return f"{rem_sec}s"
+    mins, secs = divmod(rem_sec, 60)
+    if mins < 60:
+        return f"{mins}m {secs:02d}s"
+    hrs, mins = divmod(mins, 60)
+    return f"{hrs}h {mins:02d}m"
+
+
+async def get_cached_db_metrics():
+    """Fetches DB metrics concurrently with a 15-second TTL cache."""
+    now = time.time()
+    if now - _db_cache["timestamp"] >= _db_cache["ttl"] or _db_cache["timestamp"] == 0.0:
+        premium_enabled = getattr(Config, 'PREMIUM_MODE', False)
+
+        coros = [
+            digital_botz.total_users_count(),
+            digital_botz.get_total_renames(),
+            digital_botz.get_network_stats(),
+        ]
+        if premium_enabled:
+            coros.append(digital_botz.total_premium_users_count())
+
+        results = await asyncio.gather(*coros, return_exceptions=True)
+
+        if not isinstance(results[0], Exception) and results[0] is not None:
+            _db_cache["real_total_users"] = results[0]
+        if not isinstance(results[1], Exception) and results[1] is not None:
+            _db_cache["raw_total_renames"] = results[1]
+        if not isinstance(results[2], Exception) and isinstance(results[2], dict):
+            _db_cache["net_stats"] = results[2]
+        if premium_enabled and len(results) > 3 and not isinstance(results[3], Exception) and results[3] is not None:
+            _db_cache["real_total_premium_users"] = results[3]
+
+        _db_cache["timestamp"] = now
+
+    return (
+        _db_cache["real_total_users"],
+        _db_cache["real_total_premium_users"],
+        _db_cache["raw_total_renames"],
+        _db_cache["net_stats"]
+    )
+
+
+async def get_status(pending_count=0):
+    """Fetches and formats system, fleet, and bot statistics."""
     global last_net_io, last_time, last_up_speed, last_dl_speed
-    
+
     try:
         from plugins.file_rename import worker_loads, active_tasks
     except ImportError:
         worker_loads = {}
         active_tasks = {}
-    
-    real_total_users = await digital_botz.total_users_count()
+
+    # Fetch cached DB values concurrently
+    real_total_users, real_total_premium_users, raw_total_renames, net_stats = await get_cached_db_metrics()
+
     total_users = real_total_users + 1009
-    
+
     if getattr(Config, 'PREMIUM_MODE', False):
-        real_total_premium_users = await digital_botz.total_premium_users_count()
         total_premium_users = real_total_premium_users + 50
     else:
         total_premium_users = "Disabled ✅"
-    
-    bot_sec = time.time() - Config.BOT_UPTIME
+
+    # --- UPTIME CALCULATIONS ---
+    bot_sec = max(0, time.time() - Config.BOT_UPTIME)
     b_days, b_rem = divmod(bot_sec, 86400)
     b_hrs, b_rem = divmod(b_rem, 3600)
     b_mins, b_secs = divmod(b_rem, 60)
-    bot_uptime = f"{int(b_days)}d {int(b_hrs)}h {int(b_mins)}m" if b_days > 0 else f"{int(b_hrs):02d}h{int(b_mins):02d}m{int(b_secs):02d}s"
+    bot_uptime = f"{int(b_days)}d {int(b_hrs)}h {int(b_mins)}m" if b_days > 0 else f"{int(b_hrs):02d}h {int(b_mins):02d}m {int(b_secs):02d}s"
 
-    sys_sec = time.time() - psutil.boot_time()
+    sys_sec = max(0, time.time() - psutil.boot_time())
     s_days, s_rem = divmod(sys_sec, 86400)
     s_hrs, s_rem = divmod(s_rem, 3600)
     s_mins, s_secs = divmod(s_rem, 60)
-    system_uptime = f"{int(s_days)}d {int(s_hrs)}h {int(s_mins)}m" if s_days > 0 else f"{int(s_hrs):02d}h{int(s_mins):02d}m{int(s_secs):02d}s"
+    system_uptime = f"{int(s_days)}d {int(s_hrs)}h {int(s_mins)}m" if s_days > 0 else f"{int(s_hrs):02d}h {int(s_mins):02d}m {int(s_secs):02d}s"
 
     total, used, free = shutil.disk_usage(".")
-    
+
     current_net_io = psutil.net_io_counters()
     current_time = time.time()
-    
-    if (current_time - last_time) >= 1.0: 
-        last_up_speed = (current_net_io.bytes_sent - last_net_io.bytes_sent) / (current_time - last_time)
-        last_dl_speed = (current_net_io.bytes_recv - last_net_io.bytes_recv) / (current_time - last_time)
+    time_delta = current_time - last_time
+    if time_delta >= 1.0:
+        last_up_speed = max(0.0, (current_net_io.bytes_sent - last_net_io.bytes_sent) / time_delta)
+        last_dl_speed = max(0.0, (current_net_io.bytes_recv - last_net_io.bytes_recv) / time_delta)
         last_net_io = current_net_io
         last_time = current_time
 
-    raw_total_renames = await digital_botz.get_total_renames()
     formatted_total_renames = format_short_number(raw_total_renames)
-
-    net_stats = await digital_botz.get_network_stats()
     data_sent = humanbytes(net_stats.get('sent', 0))
     data_recv = humanbytes(net_stats.get('recv', 0))
 
+    # --- FLEET NODE & ACTIVE TASKS MONITORING ---
     workers = getattr(Config, "WORKER_CLIENTS", [])
     total_workers = len(workers)
-    healthy_workers = sum(1 for w in workers if getattr(w, "is_healthy", True))
-    active_workers = sum(1 for load in worker_loads.values() if load > 0)
+    healthy_workers = 0
+    active_workers = 0
+    worker_nodes = []
+
+    for idx, w in enumerate(workers):
+        is_healthy = bool(getattr(w, "is_healthy", True))
+        is_connected = bool(getattr(w, "is_connected", True))
+        load = int(worker_loads.get(w, 0))
+
+        if is_healthy:
+            healthy_workers += 1
+        if load > 0:
+            active_workers += 1
+
+        w_name = getattr(w, "name", None)
+        if not w_name:
+            me = getattr(w, "me", None)
+            w_name = f"@{me.username}" if getattr(me, "username", None) else getattr(me, "first_name", f"Worker-{idx + 1}")
+
+        worker_nodes.append({
+            "id": idx + 1,
+            "name": str(w_name),
+            "healthy": is_healthy,
+            "connected": is_connected,
+            "load": load,
+            "status": "Rate-Limited" if not is_healthy else ("Busy" if load > 0 else "Idle")
+        })
+
     free_workers = max(0, healthy_workers - active_workers)
-    
     current_active_tasks = len(active_tasks)
-    
+
     up_speed_str = f"{humanbytes(last_up_speed)}/s" if last_up_speed > 0 else "0 B/s"
     dl_speed_str = f"{humanbytes(last_dl_speed)}/s" if last_dl_speed > 0 else "0 B/s"
-    
+
     return {
         "bot_status": "Operational",
         "bot_version": __version__,
@@ -134,9 +252,9 @@ async def get_status():
         "premium_users": total_premium_users,
         "bot_uptime": bot_uptime,
         "system_uptime": system_uptime,
-        "cpu_usage": psutil.cpu_percent(),
-        "ram_usage": psutil.virtual_memory().percent,
-        "disk_usage": psutil.disk_usage('/').percent,
+        "cpu_usage": round(psutil.cpu_percent(), 1),
+        "ram_usage": round(psutil.virtual_memory().percent, 1),
+        "disk_usage": round(psutil.disk_usage('.').percent, 1),
         "total_disk": humanbytes(total),
         "used_disk": humanbytes(used),
         "free_disk": humanbytes(free),
@@ -144,75 +262,152 @@ async def get_status():
         "data_recv": data_recv,
         "up_speed": up_speed_str,
         "dl_speed": dl_speed_str,
+        "up_speed_bps": round(last_up_speed, 2),
+        "dl_speed_bps": round(last_dl_speed, 2),
         "total_renames": formatted_total_renames,
         "total_workers": total_workers,
-        "healthy_workers": healthy_workers, 
+        "healthy_workers": healthy_workers,
         "active_workers": active_workers,
         "free_workers": free_workers,
+        "worker_nodes": worker_nodes,
         "active_tasks": current_active_tasks,
+        "pending_tasks": pending_count,
         "timestamp": int(time.time()),
         "github_link": "https://github.com/DigitalBotz/Digital-Rename-Bot",
         "telegram_link": "https://t.me/OtherBs"
     }
 
+
+async def get_queue_data():
+    """Exposes live split data for Downloads, Uploads, and Pending Tasks from DB & memory."""
+    try:
+        from helper.database import Task
+        from plugins.file_rename import active_progress
+    except ImportError:
+        return {"success": False, "error": "Cannot load required modules", "downloading": [], "uploading": [], "pending": []}
+
+    try:
+        active_db_tasks = await Task.find_all().to_list()
+
+        downloading = []
+        uploading = []
+        pending = []
+        seen_ids = set()
+
+        for task in active_db_tasks:
+            tid = str(task.id)
+            seen_ids.add(tid)
+            if tid in active_progress:
+                prog = dict(active_progress[tid])
+                prog["task_id"] = tid
+                prog["eta"] = format_eta(
+                    prog.get("current", "0 B"),
+                    prog.get("total", "0 B"),
+                    prog.get("speed", "0 B/s")
+                )
+                if prog.get("status") == "Downloading":
+                    downloading.append(prog)
+                else:
+                    uploading.append(prog)
+            else:
+                fname = getattr(task, "new_name", None) or "Unknown_File"
+                raw_size = getattr(task, "file_size", 0)
+                fsize = humanbytes(raw_size) if raw_size else ""
+                pending.append({
+                    "filename": fname,
+                    "size": fsize,
+                    "status": "Pending"
+                })
+
+        # Catch any in-memory progress entries not yet or no longer in Task DB list
+        for tid, prog in list(active_progress.items()):
+            if tid not in seen_ids:
+                item = dict(prog)
+                item["task_id"] = tid
+                item["eta"] = format_eta(
+                    item.get("current", "0 B"),
+                    item.get("total", "0 B"),
+                    item.get("speed", "0 B/s")
+                )
+                if item.get("status") == "Downloading":
+                    downloading.append(item)
+                else:
+                    uploading.append(item)
+
+        return {
+            "success": True,
+            "downloading": downloading,
+            "uploading": uploading,
+            "pending": pending
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "downloading": [], "uploading": [], "pending": []}
+
+
 @DigitalRenameBot.get("/", allow_head=True)
 async def root_route_handler(request):
-    status_data = await get_status()
-    
+    queue_data = await get_queue_data()
+    status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
+
     try:
         with open('templates/welcome.html', 'r', encoding='utf-8') as f:
             html_content = f.read()
     except FileNotFoundError:
         return web.Response(text="API is Operational. (templates/welcome.html is missing)", content_type='text/plain')
-    
+
     for key, value in status_data.items():
-        html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
-    
+        if not isinstance(value, (list, dict)):
+            html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
+
     return web.Response(text=html_content, content_type='text/html')
+
 
 @DigitalRenameBot.get("/api/status")
 async def api_status_handler(request):
-    status_data = await get_status()
+    queue_data = await get_queue_data()
+    status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
     return web.json_response(status_data)
 
-# ==========================================
-# --- LIVE QUEUE WITH PROGRESS TRACKING ---
-# ==========================================
+
 @DigitalRenameBot.get("/api/queue")
 async def api_queue_handler(request):
-    """Exposes live split data for Downloads, Uploads, and Pending Tasks."""
+    queue_data = await get_queue_data()
+    return web.json_response(queue_data)
+
+
+@DigitalRenameBot.get("/api/stream")
+async def api_stream_handler(request):
+    """Unified Server-Sent Events (SSE) endpoint pushing live status & queue telemetry."""
+    response = web.StreamResponse(
+        status=200,
+        reason='OK',
+        headers={
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        }
+    )
+    await response.prepare(request)
+
     try:
-        from helper.database import digital_botz, Task
-        from plugins.file_rename import active_progress
-    except ImportError:
-        return web.json_response({"error": "Cannot load required modules"})
-        
-    try:
-        active_db_tasks = await Task.find_all().to_list()
-        
-        downloading = []
-        uploading = []
-        pending = []
-        
-        for task in active_db_tasks:
-            tid = str(task.id)
-            if tid in active_progress:
-                prog = active_progress[tid]
-                if prog["status"] == "Downloading":
-                    downloading.append(prog)
-                else:
-                    uploading.append(prog)
-            else:
-                pending.append({"filename": task.new_name, "status": "Pending"})
-                
-        return web.json_response({
-            "success": True,
-            "downloading": downloading,
-            "uploading": uploading,
-            "pending": pending
-        })
-    except Exception as e:
-        return web.json_response({"success": False, "error": str(e)})
+        while True:
+            queue_data = await get_queue_data()
+            status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
+            payload = {
+                "status": status_data,
+                "queue": queue_data
+            }
+            chunk = f"data: {json.dumps(payload)}\n\n".encode("utf-8")
+            await response.write(chunk)
+            await response.drain()
+            await asyncio.sleep(1.0)
+    except (asyncio.CancelledError, ConnectionResetError, BrokenPipeError):
+        pass
+    except Exception:
+        pass
+
+    return response
 
 
 async def web_server():
