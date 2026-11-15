@@ -16,7 +16,11 @@ import psutil
 import shutil
 import os
 import json
+import hmac
+import hashlib
 import asyncio
+from urllib.parse import parse_qsl
+from datetime import datetime, timezone
 from config import Config
 from plugins import __version__
 from helper.utils import humanbytes
@@ -28,7 +32,7 @@ os.makedirs('templates', exist_ok=True)
 
 DigitalRenameBot = web.RouteTableDef()
 
-# --- NETWORK SPEED TRACKER GLOBALS ---
+# --- NETWORK SPEED TRACKER GLOBALS (UNCHANGED) ---
 last_net_io = psutil.net_io_counters()
 last_time = time.time()
 last_up_speed = 0.0
@@ -68,6 +72,66 @@ if not hasattr(Message, "_hooked_for_renames"):
         Message.edit_text = hooked_edit_text_wrapper
 
     Message._hooked_for_renames = True
+
+
+# ==========================================
+# --- TELEGRAM MINI APP AUTH VERIFICATION ---
+# ==========================================
+def _get_admin_ids():
+    raw = getattr(Config, "ADMIN", [])
+    if isinstance(raw, int):
+        return {raw}
+    if isinstance(raw, (list, tuple, set)):
+        return {int(x) for x in raw if str(x).isdigit()}
+    if isinstance(raw, str):
+        return {int(x) for x in raw.replace(",", " ").split() if x.isdigit()}
+    return set()
+
+
+def verify_telegram_webapp(init_data: str):
+    """Validates Telegram WebApp initData via HMAC-SHA256 and checks Config.ADMIN."""
+    bot_token = getattr(Config, "BOT_TOKEN", "")
+    if not init_data or not bot_token:
+        return None
+
+    try:
+        parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+        received_hash = parsed.pop("hash", None)
+        if not received_hash:
+            return None
+
+        # Reject expired initData older than 24 hours
+        auth_date = int(parsed.get("auth_date", 0))
+        if auth_date <= 0 or (time.time() - auth_date) > 86400:
+            return None
+
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+        secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+        calculated_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        if not hmac.compare_digest(calculated_hash, received_hash):
+            return None
+
+        user_raw = parsed.get("user")
+        if not user_raw:
+            return None
+
+        user_obj = json.loads(user_raw)
+        user_id = int(user_obj.get("id", 0))
+        if user_id not in _get_admin_ids():
+            return None
+
+        return user_obj
+    except Exception:
+        return None
+
+
+def _extract_admin_from_request(request):
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("tma "):
+        return None
+    init_data = auth_header[4:].strip()
+    return verify_telegram_webapp(init_data)
 
 
 def format_short_number(num):
@@ -160,15 +224,34 @@ async def get_cached_db_metrics():
     )
 
 
+def _build_worker_lookup():
+    """Maps id(worker_client) -> readable worker label."""
+    workers = getattr(Config, "WORKER_CLIENTS", [])
+    lookup = {}
+    for idx, w in enumerate(workers):
+        w_name = getattr(w, "name", None)
+        if not w_name:
+            me = getattr(w, "me", None)
+            w_name = f"@{me.username}" if getattr(me, "username", None) else getattr(me, "first_name", f"Worker-{idx + 1}")
+        lookup[id(w)] = f"#{idx + 1} {w_name}"
+    return lookup
+
+
 async def get_status(pending_count=0):
     """Fetches and formats system, fleet, and bot statistics."""
     global last_net_io, last_time, last_up_speed, last_dl_speed
 
     try:
-        from plugins.file_rename import worker_loads, active_tasks
+        from plugins import file_rename
+        worker_loads = getattr(file_rename, "worker_loads", {})
+        active_tasks = getattr(file_rename, "active_tasks", {})
+        active_progress = getattr(file_rename, "active_progress", {})
+        queue_paused = bool(getattr(file_rename, "queue_paused", False))
     except ImportError:
         worker_loads = {}
         active_tasks = {}
+        active_progress = {}
+        queue_paused = False
 
     # Fetch cached DB values concurrently
     real_total_users, real_total_premium_users, raw_total_renames, net_stats = await get_cached_db_metrics()
@@ -181,13 +264,14 @@ async def get_status(pending_count=0):
         total_premium_users = "Disabled ✅"
 
     # --- UPTIME CALCULATIONS ---
-    bot_sec = max(0, time.time() - Config.BOT_UPTIME)
+    now = time.time()
+    bot_sec = max(0, now - Config.BOT_UPTIME)
     b_days, b_rem = divmod(bot_sec, 86400)
     b_hrs, b_rem = divmod(b_rem, 3600)
     b_mins, b_secs = divmod(b_rem, 60)
     bot_uptime = f"{int(b_days)}d {int(b_hrs)}h {int(b_mins)}m" if b_days > 0 else f"{int(b_hrs):02d}h {int(b_mins):02d}m {int(b_secs):02d}s"
 
-    sys_sec = max(0, time.time() - psutil.boot_time())
+    sys_sec = max(0, now - psutil.boot_time())
     s_days, s_rem = divmod(sys_sec, 86400)
     s_hrs, s_rem = divmod(s_rem, 3600)
     s_mins, s_secs = divmod(s_rem, 60)
@@ -195,6 +279,7 @@ async def get_status(pending_count=0):
 
     total, used, free = shutil.disk_usage(".")
 
+    # --- OVERALL BANDWIDTH SPEED TRACKER (UNCHANGED) ---
     current_net_io = psutil.net_io_counters()
     current_time = time.time()
     time_delta = current_time - last_time
@@ -208,6 +293,16 @@ async def get_status(pending_count=0):
     data_sent = humanbytes(net_stats.get('sent', 0))
     data_recv = humanbytes(net_stats.get('recv', 0))
 
+    # --- AGGREGATE ACTIVE SPEED PER WORKER ID ---
+    worker_speeds = {}
+    for prog in list(active_progress.values()):
+        wid = prog.get("worker_id")
+        if wid is not None:
+            bps = prog.get("speed_bps")
+            if bps is None:
+                bps = parse_human_bytes(prog.get("speed", "0 B/s"))
+            worker_speeds[wid] = worker_speeds.get(wid, 0.0) + float(bps)
+
     # --- FLEET NODE & ACTIVE TASKS MONITORING ---
     workers = getattr(Config, "WORKER_CLIENTS", [])
     total_workers = len(workers)
@@ -216,7 +311,17 @@ async def get_status(pending_count=0):
     worker_nodes = []
 
     for idx, w in enumerate(workers):
+        unhealthy_until = float(getattr(w, "unhealthy_until", 0) or 0)
         is_healthy = bool(getattr(w, "is_healthy", True))
+
+        # Auto-reflect recovery once cooldown expires
+        if not is_healthy and unhealthy_until > 0 and now >= unhealthy_until:
+            w.is_healthy = True
+            w.unhealthy_until = 0
+            is_healthy = True
+            unhealthy_until = 0
+
+        cooldown_sec = max(0, int(unhealthy_until - now)) if not is_healthy else 0
         is_connected = bool(getattr(w, "is_connected", True))
         load = int(worker_loads.get(w, 0))
 
@@ -230,12 +335,18 @@ async def get_status(pending_count=0):
             me = getattr(w, "me", None)
             w_name = f"@{me.username}" if getattr(me, "username", None) else getattr(me, "first_name", f"Worker-{idx + 1}")
 
+        node_bps = worker_speeds.get(id(w), 0.0)
+        node_speed_str = f"{humanbytes(node_bps)}/s" if node_bps > 0 else "0 B/s"
+
         worker_nodes.append({
             "id": idx + 1,
             "name": str(w_name),
             "healthy": is_healthy,
             "connected": is_connected,
             "load": load,
+            "cooldown_sec": cooldown_sec,
+            "speed": node_speed_str,
+            "speed_bps": round(node_bps, 2),
             "status": "Rate-Limited" if not is_healthy else ("Busy" if load > 0 else "Idle")
         })
 
@@ -246,7 +357,8 @@ async def get_status(pending_count=0):
     dl_speed_str = f"{humanbytes(last_dl_speed)}/s" if last_dl_speed > 0 else "0 B/s"
 
     return {
-        "bot_status": "Operational",
+        "bot_status": "Paused (Draining)" if queue_paused else "Operational",
+        "queue_paused": queue_paused,
         "bot_version": __version__,
         "total_users": total_users,
         "premium_users": total_premium_users,
@@ -288,6 +400,7 @@ async def get_queue_data():
 
     try:
         active_db_tasks = await Task.find_all().to_list()
+        worker_lookup = _build_worker_lookup()
 
         downloading = []
         uploading = []
@@ -300,6 +413,7 @@ async def get_queue_data():
             if tid in active_progress:
                 prog = dict(active_progress[tid])
                 prog["task_id"] = tid
+                prog["worker_name"] = worker_lookup.get(prog.get("worker_id"), "Primary Bot")
                 prog["eta"] = format_eta(
                     prog.get("current", "0 B"),
                     prog.get("total", "0 B"),
@@ -310,7 +424,14 @@ async def get_queue_data():
                 else:
                     uploading.append(prog)
             else:
-                fname = getattr(task, "new_name", None) or "Unknown_File"
+                fname = (getattr(task, "new_name", None) or "").strip()
+                if not fname or fname == ".":
+                    continue
+                if getattr(task, "id", None) and hasattr(task.id, "generation_time"):
+                    age_sec = (datetime.now(timezone.utc) - task.id.generation_time).total_seconds()
+                    if age_sec > 1800:
+                        continue
+
                 raw_size = getattr(task, "file_size", 0)
                 fsize = humanbytes(raw_size) if raw_size else ""
                 pending.append({
@@ -319,11 +440,11 @@ async def get_queue_data():
                     "status": "Pending"
                 })
 
-        # Catch any in-memory progress entries not yet or no longer in Task DB list
         for tid, prog in list(active_progress.items()):
             if tid not in seen_ids:
                 item = dict(prog)
                 item["task_id"] = tid
+                item["worker_name"] = worker_lookup.get(item.get("worker_id"), "Primary Bot")
                 item["eta"] = format_eta(
                     item.get("current", "0 B"),
                     item.get("total", "0 B"),
@@ -373,6 +494,102 @@ async def api_status_handler(request):
 async def api_queue_handler(request):
     queue_data = await get_queue_data()
     return web.json_response(queue_data)
+
+
+@DigitalRenameBot.post("/api/admin/verify")
+async def api_admin_verify_handler(request):
+    """Verifies Telegram Mini App initData and unlocks admin UI if user is in Config.ADMIN."""
+    admin_user = _extract_admin_from_request(request)
+    if not admin_user:
+        return web.json_response({"authorized": False}, status=403)
+    return web.json_response({
+        "authorized": True,
+        "user": {
+            "id": admin_user.get("id"),
+            "first_name": admin_user.get("first_name", "Admin"),
+            "username": admin_user.get("username", "")
+        }
+    })
+
+
+@DigitalRenameBot.post("/api/admin/action")
+async def api_admin_action_handler(request):
+    """Executes authenticated Telegram Mini App admin commands."""
+    admin_user = _extract_admin_from_request(request)
+    if not admin_user:
+        return web.json_response({"success": False, "error": "Unauthorized Telegram session"}, status=403)
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"success": False, "error": "Invalid JSON payload"}, status=400)
+
+    action = body.get("action")
+
+    if action == "purge_queue":
+        try:
+            from helper.database import Task
+            from plugins.file_rename import active_tasks, active_progress
+
+            running_ids = set(active_tasks.keys())
+            all_tasks = await Task.find_all().to_list()
+            deleted_count = 0
+
+            for t in all_tasks:
+                if str(t.id) not in running_ids:
+                    await t.delete()
+                    deleted_count += 1
+
+            for pid in list(active_progress.keys()):
+                if pid not in running_ids:
+                    del active_progress[pid]
+
+            return web.json_response({
+                "success": True,
+                "message": f"Purged {deleted_count} stuck/orphaned task(s) from database."
+            })
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+
+    elif action == "heal_workers":
+        try:
+            workers = getattr(Config, "WORKER_CLIENTS", [])
+            healed = 0
+            reconnected = 0
+
+            for w in workers:
+                if not getattr(w, "is_healthy", True) or getattr(w, "unhealthy_until", 0) > 0:
+                    healed += 1
+                w.is_healthy = True
+                w.unhealthy_until = 0
+                if not getattr(w, "is_connected", True):
+                    try:
+                        await w.connect()
+                        reconnected += 1
+                    except Exception:
+                        pass
+
+            return web.json_response({
+                "success": True,
+                "message": f"Healed {healed} node(s) & reconnected {reconnected} session(s)."
+            })
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+
+    elif action == "toggle_pause":
+        try:
+            from plugins import file_rename
+            file_rename.queue_paused = not bool(getattr(file_rename, "queue_paused", False))
+            state_label = "PAUSED (draining active tasks)" if file_rename.queue_paused else "RESUMED (accepting files)"
+            return web.json_response({
+                "success": True,
+                "queue_paused": file_rename.queue_paused,
+                "message": f"Queue intake is now {state_label}."
+            })
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+
+    return web.json_response({"success": False, "error": "Unknown admin action"}, status=400)
 
 
 @DigitalRenameBot.get("/api/stream")
