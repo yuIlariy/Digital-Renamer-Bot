@@ -146,6 +146,16 @@ def format_short_number(num):
     return str(num)
 
 
+def extract_extension(filename: str) -> str:
+    """Extracts a brief uppercase file extension (e.g. MKV, MP4, ZIP)."""
+    if not filename or not isinstance(filename, str) or "." not in filename:
+        return ""
+    ext = filename.rsplit(".", 1)[-1].strip().upper()
+    if not ext or len(ext) > 8 or "/" in ext or "\\" in ext or " " in ext:
+        return ""
+    return ext
+
+
 def parse_human_bytes(size_str):
     """Parses human-readable byte strings (e.g., '12.50 MB/s') back to float bytes."""
     if not size_str or not isinstance(size_str, str):
@@ -412,6 +422,9 @@ async def get_queue_data():
             seen_ids.add(tid)
             if tid in active_progress:
                 prog = dict(active_progress[tid])
+                fname = (prog.get("filename") or getattr(task, "new_name", None) or "Unknown File").strip()
+                prog["filename"] = fname
+                prog["extension"] = extract_extension(fname)
                 prog["task_id"] = tid
                 prog["worker_name"] = worker_lookup.get(prog.get("worker_id"), "Primary Bot")
                 prog["eta"] = format_eta(
@@ -436,6 +449,7 @@ async def get_queue_data():
                 fsize = humanbytes(raw_size) if raw_size else ""
                 pending.append({
                     "filename": fname,
+                    "extension": extract_extension(fname),
                     "size": fsize,
                     "status": "Pending"
                 })
@@ -443,6 +457,9 @@ async def get_queue_data():
         for tid, prog in list(active_progress.items()):
             if tid not in seen_ids:
                 item = dict(prog)
+                fname = (item.get("filename") or "Unknown File").strip()
+                item["filename"] = fname
+                item["extension"] = extract_extension(fname)
                 item["task_id"] = tid
                 item["worker_name"] = worker_lookup.get(item.get("worker_id"), "Primary Bot")
                 item["eta"] = format_eta(
