@@ -12,7 +12,7 @@ Copyright (c) 2022 @Digital_Botz
 """
 
 import datetime, time, pytz
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 from pymongo import AsyncMongoClient
 from pydantic import BaseModel, Field
 from beanie import Document, init_beanie
@@ -73,6 +73,30 @@ class BotStats(Document):
     class Settings:
         name = "stats"
 
+class DailyAnalytics(Document):
+    id: str = Field(alias="_id")  # YYYY-MM-DD (UTC)
+    date: str = ""
+    renames_count: int = 0
+    bytes_transferred: int = 0
+    gb_transferred: float = 0.0
+    peak_active_tasks: int = 0
+    updated_at: Optional[datetime.datetime] = None
+
+    class Settings:
+        name = "analytics_daily"
+
+class HourlyAnalytics(Document):
+    id: str = Field(alias="_id")  # YYYY-MM-DDTHH (UTC)
+    hour: str = ""
+    renames_count: int = 0
+    bytes_transferred: int = 0
+    gb_transferred: float = 0.0
+    peak_active_tasks: int = 0
+    updated_at: Optional[datetime.datetime] = None
+
+    class Settings:
+        name = "analytics_hourly"
+
 class Task(Document):
     user_id: int
     file_msg_id: int
@@ -99,7 +123,10 @@ class Database:
     async def init_db(self):
         self._client = AsyncMongoClient(self.uri)
         self.db = self._client[self.database_name]
-        await init_beanie(database=self.db, document_models=[User, PremiumUser, BotStats, Task])
+        await init_beanie(
+            database=self.db,
+            document_models=[User, PremiumUser, BotStats, DailyAnalytics, HourlyAnalytics, Task]
+        )
         print("✅ Database Layer Initialized via Beanie/Pydantic")
 
     async def add_user(self, b, m):
@@ -411,27 +438,109 @@ class Database:
         return user.ban_status.model_dump() if user else BanStatus().model_dump()
 
     async def update_network_stats(self, sent_delta: int, recv_delta: int):
-        stats = await BotStats.get("network_stats")
-        if not stats:
-            stats = BotStats()
-        stats.sent += sent_delta
-        stats.recv += recv_delta
-        await stats.save()
+        s_delta = max(0, int(sent_delta or 0))
+        r_delta = max(0, int(recv_delta or 0))
+        if s_delta == 0 and r_delta == 0:
+            return
+        if self.db is not None:
+            await self.db["stats"].update_one(
+                {"_id": "network_stats"},
+                {
+                    "$inc": {"sent": s_delta, "recv": r_delta},
+                    "$setOnInsert": {"total_renames": 0}
+                },
+                upsert=True
+            )
+        else:
+            stats = await BotStats.get("network_stats")
+            if not stats:
+                stats = BotStats()
+            stats.sent += s_delta
+            stats.recv += r_delta
+            await stats.save()
 
     async def get_network_stats(self):
         stats = await BotStats.get("network_stats")
         return {"sent": stats.sent, "recv": stats.recv} if stats else {"sent": 0, "recv": 0}
 
-    async def increment_total_renames(self):
-        stats = await BotStats.get("network_stats")
-        if not stats:
-            stats = BotStats()
-        stats.total_renames += 1
-        await stats.save()
+    async def increment_total_renames(self, count: int = 1):
+        inc_val = max(1, int(count or 1))
+        if self.db is not None:
+            await self.db["stats"].update_one(
+                {"_id": "network_stats"},
+                {
+                    "$inc": {"total_renames": inc_val},
+                    "$setOnInsert": {"sent": 0, "recv": 0}
+                },
+                upsert=True
+            )
+        else:
+            stats = await BotStats.get("network_stats")
+            if not stats:
+                stats = BotStats()
+            stats.total_renames += inc_val
+            await stats.save()
 
     async def get_total_renames(self):
         stats = await BotStats.get("network_stats")
         return stats.total_renames if stats else 0
+
+    # ==========================================
+    # --- 7-DAY & HOURLY ANALYTICS ROLLUPS ---
+    # ==========================================
+    async def upsert_analytics_rollup(
+        self,
+        collection_name: str,
+        doc_id: str,
+        label_field: str,
+        renames_delta: int,
+        bytes_delta: int,
+        peak_tasks: int,
+        updated_at: datetime.datetime
+    ):
+        if self.db is None:
+            raise RuntimeError("Database not initialized")
+
+        col = self.db[collection_name]
+        r_inc = max(0, int(renames_delta or 0))
+        b_inc = max(0, int(bytes_delta or 0))
+        p_max = max(0, int(peak_tasks or 0))
+
+        await col.update_one(
+            {"_id": doc_id},
+            {
+                "$inc": {
+                    "renames_count": r_inc,
+                    "bytes_transferred": b_inc
+                },
+                "$max": {
+                    "peak_active_tasks": p_max
+                },
+                "$set": {
+                    label_field: doc_id,
+                    "updated_at": updated_at
+                }
+            },
+            upsert=True
+        )
+        doc = await col.find_one({"_id": doc_id}, {"bytes_transferred": 1})
+        if doc is not None:
+            gb_val = round(float(doc.get("bytes_transferred", 0)) / (1024 ** 3), 3)
+            await col.update_one({"_id": doc_id}, {"$set": {"gb_transferred": gb_val}})
+
+    async def get_daily_analytics_docs(self, day_keys: List[str]) -> Dict[str, dict]:
+        if self.db is None or not day_keys:
+            return {}
+        docs_by_day = {}
+        cursor = self.db["analytics_daily"].find({"_id": {"$in": day_keys}})
+        async for doc in cursor:
+            docs_by_day[doc["_id"]] = doc
+        return docs_by_day
+
+    async def prune_hourly_analytics(self, cutoff_key: str):
+        if self.db is None:
+            return
+        await self.db["analytics_hourly"].delete_many({"_id": {"$lt": cutoff_key}})
 
     async def get_expiring_users(self):
         now = datetime.datetime.now()
