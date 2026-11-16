@@ -38,6 +38,12 @@ from helper.database import digital_botz, Task
 from helper.ffmpeg import change_metadata
 from config import Config
 
+try:
+    from plugins.web_support import record_rename_event
+except Exception:
+    def record_rename_event(size_bytes: int = 0):
+        pass
+
 # extra imports
 from asyncio import sleep
 import os, time, asyncio, shutil
@@ -784,8 +790,30 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     await perform_upload()
 
                 await digital_botz.delete_task(task_id)
+
+                # --- PERSIST EXACT TRANSFER VOLUME & RENAME TELEMETRY ---
+                dl_bytes = int(getattr(media, "file_size", 0) or 0)
+                try:
+                    up_bytes = int(os.path.getsize(file_to_upload)) if (file_to_upload and os.path.exists(file_to_upload)) else dl_bytes
+                except Exception:
+                    up_bytes = dl_bytes
+
+                try:
+                    await digital_botz.update_network_stats(up_bytes, dl_bytes)
+                except Exception:
+                    pass
+
+                try:
+                    await digital_botz.increment_total_renames()
+                except Exception:
+                    pass
+
+                record_rename_event(size_bytes=(dl_bytes + up_bytes))
+
                 if rkn_processing:
                     try:
+                        if getattr(rkn_processing, "_msg", None):
+                            rkn_processing._msg._already_counted = True
                         await rkn_processing.edit("🎈 Uploaded Successfully....")
                         await asyncio.sleep(2)
                         await rkn_processing.delete()

@@ -56,7 +56,8 @@ _rollup_buffer = {
 
 _net_rollup_baseline = {
     "db_total": None,
-    "psutil_total": None
+    "psutil_total": None,
+    "recorded_direct_bytes": 0
 }
 
 _analytics_cache = {
@@ -72,7 +73,7 @@ def _utc_keys(now_dt=None):
 
 
 def record_rename_event(size_bytes: int = 0):
-    """Buffers a completed rename into in-memory hourly/daily rollup counters."""
+    """Buffers a completed rename and its transferred bytes into hourly/daily rollup counters."""
     try:
         day_key, hour_key = _utc_keys()
         safe_bytes = max(0, int(size_bytes or 0))
@@ -84,25 +85,33 @@ def record_rename_event(size_bytes: int = 0):
         h_entry = _rollup_buffer["hourly"].setdefault(hour_key, {"renames": 0, "bytes": 0, "peak": 0})
         h_entry["renames"] += 1
         h_entry["bytes"] += safe_bytes
+
+        if safe_bytes > 0:
+            _net_rollup_baseline["recorded_direct_bytes"] += safe_bytes
+
+        # Invalidate caches so the next SSE tick reflects the completed task immediately
+        _analytics_cache["timestamp"] = 0.0
+        _db_cache["timestamp"] = 0.0
     except Exception:
         pass
 
 
-# ⚠️ INVISIBLE HOOK: Intercept Pyrogram/wzgram edit message instead of the database!
-# Quietly listens for "Uploaded Successfully" and adds +1 to the database counter.
+# ⚠️ INVISIBLE HOOK: Fallback listener for plugins that report completion via Message.edit
 if not hasattr(Message, "_hooked_for_renames"):
     original_edit = getattr(Message, "edit", None)
     original_edit_text = getattr(Message, "edit_text", None)
 
     async def hooked_edit_wrapper(self, text, *args, **kwargs):
-        if isinstance(text, str) and "Uploaded Successfully" in text:
+        if isinstance(text, str) and "Uploaded Successfully" in text and not getattr(self, "_already_counted", False):
+            self._already_counted = True
             await digital_botz.increment_total_renames()
             record_rename_event()
         if original_edit:
             return await original_edit(self, text, *args, **kwargs)
 
     async def hooked_edit_text_wrapper(self, text, *args, **kwargs):
-        if isinstance(text, str) and "Uploaded Successfully" in text:
+        if isinstance(text, str) and "Uploaded Successfully" in text and not getattr(self, "_already_counted", False):
+            self._already_counted = True
             await digital_botz.increment_total_renames()
             record_rename_event()
         if original_edit_text:
@@ -253,7 +262,7 @@ def _sample_active_tasks_count() -> int:
 
 
 async def _collect_transferred_bytes_delta() -> int:
-    """Computes incremental transferred bytes since the last rollup flush."""
+    """Computes incremental transferred bytes not already captured via record_rename_event()."""
     delta_bytes = 0
     try:
         net_stats = await digital_botz.get_network_stats()
@@ -263,15 +272,25 @@ async def _collect_transferred_bytes_delta() -> int:
                 if _net_rollup_baseline["db_total"] is None:
                     _net_rollup_baseline["db_total"] = cur_db_total
                 elif cur_db_total >= _net_rollup_baseline["db_total"]:
-                    delta_bytes = cur_db_total - _net_rollup_baseline["db_total"]
+                    raw_delta = cur_db_total - _net_rollup_baseline["db_total"]
                     _net_rollup_baseline["db_total"] = cur_db_total
+                    already_recorded = _net_rollup_baseline["recorded_direct_bytes"]
+                    if already_recorded > 0:
+                        delta_bytes = max(0, raw_delta - already_recorded)
+                        _net_rollup_baseline["recorded_direct_bytes"] = max(0, already_recorded - raw_delta)
+                    else:
+                        delta_bytes = raw_delta
                 else:
                     _net_rollup_baseline["db_total"] = cur_db_total
                 return delta_bytes
     except Exception:
         pass
 
-    # Fallback to host NIC byte delta while pipeline tasks are active
+    # Fallback to host NIC byte delta only if BotStats is unused and tasks are active
+    if _net_rollup_baseline["recorded_direct_bytes"] > 0:
+        _net_rollup_baseline["recorded_direct_bytes"] = 0
+        return 0
+
     try:
         io = psutil.net_io_counters()
         cur_psutil_total = int(io.bytes_sent + io.bytes_recv)
@@ -290,22 +309,19 @@ async def _collect_transferred_bytes_delta() -> int:
 
 async def flush_analytics_rollups():
     """Flushes buffered hourly and daily analytics rollups to MongoDB."""
-    if not hasattr(digital_botz, "db"):
+    if getattr(digital_botz, "db", None) is None:
         return
 
     now_dt = datetime.now(timezone.utc)
     day_key, hour_key = _utc_keys(now_dt)
 
-    # Fold transferred byte delta into the current UTC bucket
+    # Fold any external transferred byte delta into the current UTC bucket
     bytes_delta = await _collect_transferred_bytes_delta()
     if bytes_delta > 0:
         d_entry = _rollup_buffer["daily"].setdefault(day_key, {"renames": 0, "bytes": 0, "peak": 0})
         d_entry["bytes"] += bytes_delta
         h_entry = _rollup_buffer["hourly"].setdefault(hour_key, {"renames": 0, "bytes": 0, "peak": 0})
         h_entry["bytes"] += bytes_delta
-
-    daily_col = digital_botz.db["analytics_daily"]
-    hourly_col = digital_botz.db["analytics_hourly"]
 
     # Snapshot & swap buffers atomically
     daily_snapshot = _rollup_buffer["daily"]
@@ -317,27 +333,15 @@ async def flush_analytics_rollups():
         if vals["renames"] == 0 and vals["bytes"] == 0 and vals["peak"] == 0:
             continue
         try:
-            await daily_col.update_one(
-                {"_id": d_key},
-                {
-                    "$inc": {
-                        "renames_count": vals["renames"],
-                        "bytes_transferred": vals["bytes"]
-                    },
-                    "$max": {
-                        "peak_active_tasks": vals["peak"]
-                    },
-                    "$set": {
-                        "date": d_key,
-                        "updated_at": now_dt
-                    }
-                },
-                upsert=True
+            await digital_botz.upsert_analytics_rollup(
+                collection_name="analytics_daily",
+                doc_id=d_key,
+                label_field="date",
+                renames_delta=vals["renames"],
+                bytes_delta=vals["bytes"],
+                peak_tasks=vals["peak"],
+                updated_at=now_dt
             )
-            doc = await daily_col.find_one({"_id": d_key})
-            if doc:
-                gb_val = round(float(doc.get("bytes_transferred", 0)) / (1024 ** 3), 3)
-                await daily_col.update_one({"_id": d_key}, {"$set": {"gb_transferred": gb_val}})
         except Exception:
             cur = _rollup_buffer["daily"].setdefault(d_key, {"renames": 0, "bytes": 0, "peak": 0})
             cur["renames"] += vals["renames"]
@@ -348,27 +352,15 @@ async def flush_analytics_rollups():
         if vals["renames"] == 0 and vals["bytes"] == 0 and vals["peak"] == 0:
             continue
         try:
-            await hourly_col.update_one(
-                {"_id": h_key},
-                {
-                    "$inc": {
-                        "renames_count": vals["renames"],
-                        "bytes_transferred": vals["bytes"]
-                    },
-                    "$max": {
-                        "peak_active_tasks": vals["peak"]
-                    },
-                    "$set": {
-                        "hour": h_key,
-                        "updated_at": now_dt
-                    }
-                },
-                upsert=True
+            await digital_botz.upsert_analytics_rollup(
+                collection_name="analytics_hourly",
+                doc_id=h_key,
+                label_field="hour",
+                renames_delta=vals["renames"],
+                bytes_delta=vals["bytes"],
+                peak_tasks=vals["peak"],
+                updated_at=now_dt
             )
-            doc = await hourly_col.find_one({"_id": h_key})
-            if doc:
-                gb_val = round(float(doc.get("bytes_transferred", 0)) / (1024 ** 3), 3)
-                await hourly_col.update_one({"_id": h_key}, {"$set": {"gb_transferred": gb_val}})
         except Exception:
             cur = _rollup_buffer["hourly"].setdefault(h_key, {"renames": 0, "bytes": 0, "peak": 0})
             cur["renames"] += vals["renames"]
@@ -403,10 +395,10 @@ async def _analytics_rollup_loop():
                 _analytics_cache["timestamp"] = 0.0  # Invalidate 7d cache after flush
 
             # Prune hourly documents older than 8 days once per hour
-            if now - last_prune >= 3600.0 and hasattr(digital_botz, "db"):
+            if now - last_prune >= 3600.0 and getattr(digital_botz, "db", None) is not None:
                 try:
                     cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%dT%H")
-                    await digital_botz.db["analytics_hourly"].delete_many({"_id": {"$lt": cutoff}})
+                    await digital_botz.prune_hourly_analytics(cutoff)
                 except Exception:
                     pass
                 last_prune = now
@@ -428,11 +420,9 @@ async def get_7d_analytics():
     day_keys = [(now_dt - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
     docs_by_day = {}
 
-    if hasattr(digital_botz, "db"):
+    if getattr(digital_botz, "db", None) is not None:
         try:
-            cursor = digital_botz.db["analytics_daily"].find({"_id": {"$in": day_keys}})
-            async for doc in cursor:
-                docs_by_day[doc["_id"]] = doc
+            docs_by_day = await digital_botz.get_daily_analytics_docs(day_keys)
         except Exception:
             pass
 
