@@ -205,11 +205,17 @@
             border-radius: 16px;
             padding: 0.9rem 1.25rem;
             display: flex;
+            flex-direction: column;
+            gap: 0.9rem;
+            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.12);
+        }
+
+        .admin-bar-top {
+            display: flex;
             flex-wrap: wrap;
             align-items: center;
             justify-content: space-between;
             gap: 0.85rem;
-            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.12);
         }
 
         .admin-identity {
@@ -251,6 +257,12 @@
             transition: all 0.2s ease;
             color: var(--text-primary);
             background: rgba(2, 6, 23, 0.7);
+            font-family: inherit;
+        }
+
+        .admin-btn:hover:not(:disabled) {
+            border-color: rgba(148, 163, 184, 0.35);
+            background: rgba(15, 23, 42, 0.9);
         }
 
         .admin-btn:disabled {
@@ -291,6 +303,95 @@
             background: rgba(239, 68, 68, 0.28);
         }
 
+        .admin-btn.primary {
+            border-color: rgba(59, 130, 246, 0.4);
+            color: #93c5fd;
+            background: rgba(59, 130, 246, 0.16);
+        }
+        .admin-btn.primary:hover:not(:disabled) {
+            background: rgba(59, 130, 246, 0.28);
+        }
+
+        .admin-btn-xs {
+            padding: 0.22rem 0.5rem;
+            font-size: 0.68rem;
+            border-radius: 6px;
+        }
+
+        /* --- Expanded Admin Tools Drawer --- */
+        .admin-drawer {
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.9rem;
+            padding-top: 0.85rem;
+            border-top: 1px solid rgba(148, 163, 184, 0.14);
+        }
+
+        .admin-drawer.open {
+            display: grid;
+        }
+
+        .admin-panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .admin-panel-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #93c5fd;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .admin-input, .admin-textarea {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.48rem 0.65rem;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.76rem;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .admin-input:focus, .admin-textarea:focus {
+            border-color: rgba(96, 165, 250, 0.5);
+        }
+
+        .admin-textarea {
+            min-height: 58px;
+            resize: vertical;
+        }
+
+        .admin-row {
+            display: flex;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .user-lookup-box {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.6rem;
+            font-size: 0.74rem;
+            display: none;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
         /* --- Bento Grid Dashboard --- */
         .dashboard {
             max-width: 1240px;
@@ -325,6 +426,21 @@
         .card-full { grid-column: span 12; }
         .card-system { grid-column: span 6; }
         .card-network { grid-column: span 6; }
+
+        /* --- User Personal Quota Card --- */
+        .card-user-plan {
+            grid-column: span 12;
+            border-color: rgba(59, 130, 246, 0.3);
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.84), rgba(30, 41, 59, 0.68));
+            display: none;
+        }
+
+        .plan-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.85rem;
+            margin-bottom: 1rem;
+        }
 
         .card-header {
             display: flex;
@@ -368,6 +484,16 @@
             background: rgba(245, 158, 11, 0.14);
             color: var(--warning);
             border-color: rgba(245, 158, 11, 0.35);
+        }
+
+        .plan-pill {
+            background: rgba(59, 130, 246, 0.15);
+            color: #93c5fd;
+            border: 1px solid rgba(59, 130, 246, 0.32);
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.74rem;
+            font-weight: 600;
         }
 
         /* --- Stat Blocks --- */
@@ -542,7 +668,7 @@
             display: block;
         }
 
-        /* --- 7-Day Volume & Rename History Chart --- */
+        /* --- 7-Day & 24-Hour Volume & Rename History Chart --- */
         .history-header-right {
             display: flex;
             align-items: center;
@@ -597,6 +723,13 @@
             flex-wrap: wrap;
         }
 
+        .history-controls-right {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
         .history-mode-tabs {
             display: inline-flex;
             align-items: center;
@@ -607,7 +740,7 @@
             gap: 0.15rem;
         }
 
-        .history-mode-btn {
+        .history-mode-btn, .history-range-btn {
             background: transparent;
             border: none;
             color: var(--text-secondary);
@@ -620,13 +753,19 @@
             transition: all 0.18s ease;
         }
 
-        .history-mode-btn:hover {
+        .history-mode-btn:hover, .history-range-btn:hover {
             color: var(--text-primary);
         }
 
         .history-mode-btn.active {
             background: rgba(59, 130, 246, 0.22);
             color: #93c5fd;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .history-range-btn.active {
+            background: rgba(168, 85, 247, 0.24);
+            color: #e9d5ff;
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         }
 
@@ -821,6 +960,17 @@
             color: #93c5fd;
             background: rgba(59, 130, 246, 0.12);
             border: 1px solid rgba(59, 130, 246, 0.25);
+            padding: 0.16rem 0.48rem;
+            border-radius: 5px;
+            flex-shrink: 0;
+        }
+
+        .q-you-pill {
+            font-size: 0.64rem;
+            font-weight: 700;
+            color: #e9d5ff;
+            background: rgba(168, 85, 247, 0.22);
+            border: 1px solid rgba(168, 85, 247, 0.38);
             padding: 0.16rem 0.48rem;
             border-radius: 5px;
             flex-shrink: 0;
@@ -1145,11 +1295,17 @@
 
         /* --- Responsive --- */
         @media (max-width: 960px) {
-            .card-bot, .card-users, .card-system, .card-network, .card-full {
+            .card-bot, .card-users, .card-system, .card-network, .card-full, .card-user-plan {
                 grid-column: span 12;
             }
             .traffic-layout {
                 grid-template-columns: 1fr;
+            }
+            .admin-drawer.open {
+                grid-template-columns: 1fr;
+            }
+            .plan-stats-grid {
+                grid-template-columns: repeat(2, 1fr);
             }
         }
 
@@ -1167,7 +1323,7 @@
             .actions {
                 flex-direction: column;
             }
-            .admin-bar {
+            .admin-bar-top {
                 flex-direction: column;
                 align-items: stretch;
             }
@@ -1213,25 +1369,111 @@
     <!-- Telegram Mini App Authenticated Admin Command Bar -->
     <div class="admin-bar-wrapper" id="admin-bar-wrapper">
         <div class="admin-bar">
-            <div class="admin-identity">
-                <span class="admin-badge"><i class="fas fa-shield-halved"></i> Admin Console</span>
-                <span id="admin-greeting">Authenticated via Telegram</span>
+            <div class="admin-bar-top">
+                <div class="admin-identity">
+                    <span class="admin-badge"><i class="fas fa-shield-halved"></i> Admin Console</span>
+                    <span id="admin-greeting">Authenticated via Telegram</span>
+                </div>
+                <div class="admin-actions">
+                    <button class="admin-btn purge" id="btn-purge-queue" onclick="triggerAdminAction('purge_queue')">
+                        <i class="fas fa-broom"></i> Purge Stuck Queue
+                    </button>
+                    <button class="admin-btn heal" id="btn-heal-workers" onclick="triggerAdminAction('heal_workers')">
+                        <i class="fas fa-heart-pulse"></i> Force-Heal Nodes
+                    </button>
+                    <button class="admin-btn pause" id="btn-toggle-pause" onclick="triggerAdminAction('toggle_pause')">
+                        <i class="fas fa-pause"></i> <span id="pause-btn-label">Pause Intake</span>
+                    </button>
+                    <button class="admin-btn primary" id="btn-toggle-drawer" onclick="toggleAdminDrawer()">
+                        <i class="fas fa-sliders"></i> Tools
+                    </button>
+                </div>
             </div>
-            <div class="admin-actions">
-                <button class="admin-btn purge" id="btn-purge-queue" onclick="triggerAdminAction('purge_queue')">
-                    <i class="fas fa-broom"></i> Purge Stuck Queue
-                </button>
-                <button class="admin-btn heal" id="btn-heal-workers" onclick="triggerAdminAction('heal_workers')">
-                    <i class="fas fa-heart-pulse"></i> Force-Heal Nodes
-                </button>
-                <button class="admin-btn pause" id="btn-toggle-pause" onclick="triggerAdminAction('toggle_pause')">
-                    <i class="fas fa-pause"></i> <span id="pause-btn-label">Pause Intake</span>
-                </button>
+
+            <!-- Collapsible Admin Management Drawer -->
+            <div class="admin-drawer" id="admin-drawer">
+                <!-- Maintenance Notice -->
+                <div class="admin-panel">
+                    <div class="admin-panel-title"><i class="fas fa-bullhorn"></i> Maintenance Notice</div>
+                    <input type="text" class="admin-input" id="maint-msg-input" placeholder="Custom pause banner shown to users...">
+                    <div class="admin-row">
+                        <button class="admin-btn primary admin-btn-xs" onclick="saveMaintenanceMessage()"><i class="fas fa-save"></i> Save Notice</button>
+                        <button class="admin-btn admin-btn-xs" onclick="clearMaintenanceMessage()"><i class="fas fa-eraser"></i> Clear</button>
+                    </div>
+                </div>
+
+                <!-- User Inspector & Quota Control -->
+                <div class="admin-panel">
+                    <div class="admin-panel-title"><i class="fas fa-user-gear"></i> User Inspector & VIP</div>
+                    <div class="admin-row" style="flex-wrap: nowrap;">
+                        <input type="text" class="admin-input" id="admin-user-query" placeholder="Telegram ID or @username..." onkeydown="if(event.key==='Enter') lookupAdminUser()">
+                        <button class="admin-btn primary admin-btn-xs" onclick="lookupAdminUser()"><i class="fas fa-search"></i></button>
+                    </div>
+                    <div class="user-lookup-box" id="admin-user-result"></div>
+                </div>
+
+                <!-- Global Broadcast -->
+                <div class="admin-panel">
+                    <div class="admin-panel-title"><i class="fas fa-paper-plane"></i> Global User Broadcast</div>
+                    <textarea class="admin-textarea" id="admin-broadcast-text" placeholder="Message to broadcast to all registered users..."></textarea>
+                    <div class="admin-row">
+                        <button class="admin-btn primary admin-btn-xs" id="btn-broadcast-start" onclick="startAdminBroadcast()"><i class="fas fa-rocket"></i> Send Broadcast</button>
+                        <button class="admin-btn purge admin-btn-xs" id="btn-broadcast-stop" style="display: none;" onclick="triggerAdminAction('broadcast_cancel', true)"><i class="fas fa-stop"></i> Stop</button>
+                    </div>
+                    <div id="broadcast-progress-box" style="display: none;">
+                        <div class="meter-header mono" style="font-size: 0.68rem; margin-bottom: 0.25rem;">
+                            <span>Progress</span>
+                            <span id="broadcast-progress-text">0 sent • 0 failed / 0</span>
+                        </div>
+                        <div class="progress-track" style="height: 6px;">
+                            <div class="progress-fill fill-ram" id="broadcast-progress-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
     <main class="dashboard">
+
+        <!-- Authenticated Telegram User Plan & Daily Quota Card -->
+        <div class="card card-user-plan" id="user-plan-card">
+            <div class="card-header">
+                <span class="card-title"><i class="fas fa-id-badge"></i> My Plan & Daily Quota <span id="user-plan-greeting" style="color: var(--text-primary); text-transform: none; letter-spacing: 0;"></span></span>
+                <span class="plan-pill mono" id="user-plan-badge">Free Plan</span>
+            </div>
+            <div class="plan-stats-grid">
+                <div class="stat-block">
+                    <div class="stat-label"><i class="fas fa-chart-pie" style="color: var(--accent-blue);"></i> Daily Used</div>
+                    <div class="stat-value mono" id="user-plan-used">0 B</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-label"><i class="fas fa-battery-three-quarters" style="color: var(--success);"></i> Remaining</div>
+                    <div class="stat-value mono" id="user-plan-remaining">0 B</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-label"><i class="fas fa-gauge-high" style="color: var(--accent-purple);"></i> Daily Limit</div>
+                    <div class="stat-value mono" id="user-plan-limit">0 B</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-label"><i class="fas fa-file-arrow-up" style="color: var(--warning);"></i> Max File Size</div>
+                    <div class="stat-value mono" id="user-plan-maxfile">2 GB</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-label"><i class="fas fa-clock-rotate-left" style="color: #60a5fa;"></i> Reset / Status</div>
+                    <div class="stat-value mono" id="user-plan-reset">—</div>
+                </div>
+            </div>
+            <div class="meter" style="margin-bottom: 0;">
+                <div class="meter-header">
+                    <span>Daily Quota Utilization</span>
+                    <span class="meter-value mono" id="user-plan-pct">0%</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill fill-cpu" id="user-plan-bar" style="width: 0%;"></div>
+                </div>
+            </div>
+        </div>
 
         <!-- Core Engine Card -->
         <div class="card card-bot">
@@ -1314,14 +1556,14 @@
             </div>
         </div>
 
-        <!-- 7-Day Volume & Rename History Card (MongoDB Persistent Rollups) -->
+        <!-- 7-Day & 24-Hour Volume & Rename History Card (MongoDB Persistent Rollups) -->
         <div class="card card-full">
             <div class="card-header">
-                <span class="card-title"><i class="fas fa-chart-column"></i> 7-Day Volume & Rename History</span>
+                <span class="card-title"><i class="fas fa-chart-column"></i> <span id="history-card-heading">7-Day Volume & Rename History</span></span>
                 <div class="history-header-right mono">
-                    <span class="history-summary-pill">7D Volume: <strong id="val-7d-gb">0.00 GB</strong></span>
-                    <span class="history-summary-pill">7D Renames: <strong id="val-7d-renames">0</strong></span>
-                    <span class="history-summary-pill">7D Peak Tasks: <strong id="val-7d-peak">0</strong></span>
+                    <span class="history-summary-pill"><span id="lbl-hist-win-1">7D</span> Volume: <strong id="val-7d-gb">0.00 GB</strong></span>
+                    <span class="history-summary-pill"><span id="lbl-hist-win-2">7D</span> Renames: <strong id="val-7d-renames">0</strong></span>
+                    <span class="history-summary-pill"><span id="lbl-hist-win-3">7D</span> Peak Tasks: <strong id="val-7d-peak">0</strong></span>
                 </div>
             </div>
             <div class="history-chart-box">
@@ -1331,10 +1573,16 @@
                         <span class="legend-item"><span class="legend-swatch" style="background: #a855f7;"></span> Renames</span>
                         <span class="legend-item"><span class="legend-swatch" style="background: #60a5fa; border-radius: 50%;"></span> Peak Concurrency (⚡)</span>
                     </div>
-                    <div class="history-mode-tabs" id="history-mode-tabs" role="tablist" aria-label="Chart metric view">
-                        <button type="button" class="history-mode-btn active" data-mode="combined">Combined</button>
-                        <button type="button" class="history-mode-btn" data-mode="volume">Volume</button>
-                        <button type="button" class="history-mode-btn" data-mode="renames">Renames</button>
+                    <div class="history-controls-right">
+                        <div class="history-mode-tabs" id="history-window-tabs" role="tablist" aria-label="Time window">
+                            <button type="button" class="history-range-btn active" data-window="7d">7D</button>
+                            <button type="button" class="history-range-btn" data-window="24h">24H</button>
+                        </div>
+                        <div class="history-mode-tabs" id="history-mode-tabs" role="tablist" aria-label="Chart metric view">
+                            <button type="button" class="history-mode-btn active" data-mode="combined">Combined</button>
+                            <button type="button" class="history-mode-btn" data-mode="volume">Volume</button>
+                            <button type="button" class="history-mode-btn" data-mode="renames">Renames</button>
+                        </div>
                     </div>
                 </div>
                 <div class="history-canvas-wrap">
@@ -1493,12 +1741,28 @@
         let activeFilter = 'all';
         let latestQueueData = { uploading: [], downloading: [], pending: [] };
         let latestAnalytics7d = { days: [], summary: { total_gb: 0, total_renames_short: '0', peak_active_tasks: 0 } };
+        let latestAnalytics24h = { days: [], summary: { total_gb: 0, total_renames_short: '0', peak_active_tasks: 0 } };
+        let historyWindow = '7d'; // '7d' | '24h'
         let hoveredHistoryIdx = -1;
         let prevActiveTasks = null;
         let prevHealthyWorkers = null;
         let tmaInitData = '';
+        let isAdminAuthenticated = false;
 
-        // --- Initialize Telegram Mini App Auth ---
+        function getAuthHeaders(extra = {}) {
+            const headers = { ...extra };
+            if (tmaInitData) {
+                headers['Authorization'] = `tma ${tmaInitData}`;
+            }
+            return headers;
+        }
+
+        function toggleAdminDrawer() {
+            const drawer = document.getElementById('admin-drawer');
+            drawer.classList.toggle('open');
+        }
+
+        // --- Initialize Telegram Mini App Auth & User Plan ---
         async function initTelegramMiniApp() {
             const tg = window.Telegram && window.Telegram.WebApp;
             if (!tg) return;
@@ -1509,17 +1773,58 @@
             if (!tg.initData) return;
             tmaInitData = tg.initData;
 
+            await Promise.all([
+                verifyAdminSession(),
+                loadUserPlanCard()
+            ]);
+        }
+
+        async function loadUserPlanCard() {
+            if (!tmaInitData) return;
+            try {
+                const res = await fetch('/api/user/plan', {
+                    headers: getAuthHeaders()
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.authenticated) return;
+
+                const card = document.getElementById('user-plan-card');
+                card.style.display = 'flex';
+
+                const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+                if (tgUser && tgUser.first_name) {
+                    document.getElementById('user-plan-greeting').innerText = `— ${tgUser.first_name}`;
+                }
+
+                document.getElementById('user-plan-badge').innerText = data.plan_name || 'Free Plan';
+                document.getElementById('user-plan-used').innerText = data.daily_used_human || '0 B';
+                document.getElementById('user-plan-remaining').innerText = data.remaining_human || '0 B';
+                document.getElementById('user-plan-limit').innerText = data.daily_limit_human || '0 B';
+                document.getElementById('user-plan-maxfile').innerText = data.max_file_size_human || '2 GB';
+                document.getElementById('user-plan-reset').innerText = data.remaining_time || '—';
+
+                const pct = Number(data.usage_pct || 0);
+                document.getElementById('user-plan-pct').innerText = `${pct}%`;
+                const bar = document.getElementById('user-plan-bar');
+                bar.style.width = `${Math.min(100, pct)}%`;
+                applyMeterColor(bar, pct, 'fill-cpu');
+            } catch (err) {
+                console.error('User plan fetch failed:', err);
+            }
+        }
+
+        async function verifyAdminSession() {
+            if (!tmaInitData) return;
             try {
                 const res = await fetch('/api/admin/verify', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `tma ${tmaInitData}`,
-                        'Content-Type': 'application/json'
-                    }
+                    headers: getAuthHeaders({ 'Content-Type': 'application/json' })
                 });
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.authorized) {
+                    isAdminAuthenticated = true;
                     const wrapper = document.getElementById('admin-bar-wrapper');
                     wrapper.style.display = 'block';
                     const name = data.user?.first_name || 'Admin';
@@ -1531,25 +1836,27 @@
         }
 
         // --- Execute Authenticated Admin Action ---
-        async function triggerAdminAction(action) {
-            if (!tmaInitData) return;
+        async function triggerAdminAction(action, skipConfirm = false, extraPayload = {}) {
+            if (!tmaInitData) return { success: false };
 
             const confirmMessages = {
                 purge_queue: 'Purge all stuck/orphaned pending tasks from MongoDB? Active downloads/uploads will not be touched.',
                 heal_workers: 'Reset FloodWait cooldowns and reconnect all worker nodes?',
-                toggle_pause: 'Toggle queue intake pause/drain mode?'
+                toggle_pause: 'Toggle queue intake pause/drain mode?',
+                cancel_task: 'Cancel this active/queued transfer task?'
             };
 
-            const proceed = await new Promise((resolve) => {
-                const tg = window.Telegram && window.Telegram.WebApp;
-                if (tg && typeof tg.showConfirm === 'function') {
-                    tg.showConfirm(confirmMessages[action] || 'Confirm admin action?', (ok) => resolve(ok));
-                } else {
-                    resolve(window.confirm(confirmMessages[action] || 'Confirm admin action?'));
-                }
-            });
-
-            if (!proceed) return;
+            if (!skipConfirm && confirmMessages[action]) {
+                const proceed = await new Promise((resolve) => {
+                    const tg = window.Telegram && window.Telegram.WebApp;
+                    if (tg && typeof tg.showConfirm === 'function') {
+                        tg.showConfirm(confirmMessages[action], (ok) => resolve(ok));
+                    } else {
+                        resolve(window.confirm(confirmMessages[action]));
+                    }
+                });
+                if (!proceed) return { success: false };
+            }
 
             const buttons = document.querySelectorAll('.admin-btn');
             buttons.forEach(b => b.disabled = true);
@@ -1557,11 +1864,8 @@
             try {
                 const res = await fetch('/api/admin/action', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `tma ${tmaInitData}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ action })
+                    headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ action, ...extraPayload })
                 });
 
                 const result = await res.json();
@@ -1573,11 +1877,87 @@
                 } else {
                     showToast(result.error || 'Action failed.', 'fa-exclamation-circle', '#ef4444');
                 }
+                return result;
             } catch (err) {
                 showToast('Network error executing admin action.', 'fa-exclamation-circle', '#ef4444');
+                return { success: false };
             } finally {
                 buttons.forEach(b => b.disabled = false);
             }
+        }
+
+        async function saveMaintenanceMessage() {
+            const msg = document.getElementById('maint-msg-input').value;
+            await triggerAdminAction('set_maintenance_message', true, { message: msg });
+        }
+
+        async function clearMaintenanceMessage() {
+            document.getElementById('maint-msg-input').value = '';
+            await triggerAdminAction('set_maintenance_message', true, { message: '' });
+        }
+
+        async function lookupAdminUser() {
+            const q = document.getElementById('admin-user-query').value.trim();
+            if (!q || !tmaInitData) return;
+
+            const box = document.getElementById('admin-user-result');
+            box.style.display = 'flex';
+            box.innerHTML = `<span style="color: var(--text-secondary);">Searching database...</span>`;
+
+            try {
+                const res = await fetch(`/api/admin/user?q=${encodeURIComponent(q)}`, {
+                    headers: getAuthHeaders()
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    box.innerHTML = `<span style="color: #fca5a5;">${escapeHtml(data.error || 'User not found')}</span>`;
+                    return;
+                }
+
+                const u = data.user;
+                const uname = u.username ? `@${escapeHtml(u.username)}` : 'No username';
+                const banBtn = u.is_banned
+                    ? `<button class="admin-btn heal admin-btn-xs" onclick="manageAdminUser(${u.user_id}, 'unban')">Unban</button>`
+                    : `<button class="admin-btn purge admin-btn-xs" onclick="manageAdminUser(${u.user_id}, 'ban')">Ban</button>`;
+
+                box.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
+                        <strong>${escapeHtml(u.first_name)} (${uname})</strong>
+                        <span class="mono" style="color:${u.is_banned ? '#fca5a5' : '#6ee7b7'}; font-size:0.68rem;">
+                            ${u.is_banned ? 'BANNED' : escapeHtml(u.plan.plan_name)}
+                        </span>
+                    </div>
+                    <div class="mono" style="font-size:0.68rem; color:var(--text-secondary);">
+                        ID: ${u.user_id} • Used: ${escapeHtml(u.plan.daily_used_human)} / ${escapeHtml(u.plan.daily_limit_human)} • Tasks: ${u.active_tasks}/${u.queued_tasks}
+                    </div>
+                    <div class="admin-row">
+                        <button class="admin-btn primary admin-btn-xs" onclick="manageAdminUser(${u.user_id}, 'grant_premium', 7)">+7d VIP</button>
+                        <button class="admin-btn primary admin-btn-xs" onclick="manageAdminUser(${u.user_id}, 'grant_premium', 30)">+30d VIP</button>
+                        <button class="admin-btn heal admin-btn-xs" onclick="manageAdminUser(${u.user_id}, 'grant_premium', 0)">Lifetime</button>
+                        <button class="admin-btn pause admin-btn-xs" onclick="manageAdminUser(${u.user_id}, 'revoke_premium')">Revoke</button>
+                        ${banBtn}
+                        <button class="admin-btn purge admin-btn-xs" onclick="manageAdminUser(${u.user_id}, 'clear_tasks')">Clear Tasks</button>
+                    </div>
+                `;
+            } catch (err) {
+                box.innerHTML = `<span style="color: #fca5a5;">Error querying user.</span>`;
+            }
+        }
+
+        async function manageAdminUser(userId, op, days = 30) {
+            const res = await triggerAdminAction('user_manage', true, { user_id: userId, op, days });
+            if (res && res.success) {
+                lookupAdminUser();
+            }
+        }
+
+        async function startAdminBroadcast() {
+            const msg = document.getElementById('admin-broadcast-text').value.trim();
+            if (!msg) {
+                showToast('Enter a broadcast message first.', 'fa-exclamation-circle', '#ef4444');
+                return;
+            }
+            await triggerAdminAction('broadcast_start', true, { message: msg });
         }
 
         // --- Hide Loader ---
@@ -1688,10 +2068,14 @@
             ctx.restore();
         }
 
-        // --- 7-Day Volume & Rename History Bar Chart Renderer ---
+        // --- 7-Day & 24-Hour Volume & Rename History Bar Chart Renderer ---
         let historyChartMode = 'combined'; // 'combined' | 'volume' | 'renames'
         let selectedHistoryIdx = -1;
         let userPinnedHistoryDay = false;
+
+        function getActiveHistoryDataset() {
+            return historyWindow === '24h' ? latestAnalytics24h : latestAnalytics7d;
+        }
 
         function formatCompactNumber(num) {
             const n = Number(num || 0);
@@ -1710,8 +2094,23 @@
             return '0G';
         }
 
-        function parseDayAxisLabels(day, idx, totalDays, isCompact) {
+        function parseDayAxisLabels(day, idx, totalDays, isCompact, colW = 40) {
             const isToday = idx === totalDays - 1;
+            if (historyWindow === '24h') {
+                const hr = day.hour || day.label || (day.date ? day.date.slice(11, 16) : `${String(idx).padStart(2, '0')}:00`);
+                const minLabelSpacingPx = 46;
+                const stride = Math.max(3, Math.ceil(minLabelSpacingPx / Math.max(1, colW)));
+                const minGapBeforeNow = Math.ceil(38 / Math.max(1, colW));
+                const showRegularTick = (idx % stride === 0) && ((totalDays - 1 - idx) >= minGapBeforeNow);
+                const showTick = showRegularTick || isToday;
+
+                return {
+                    top: showTick ? (isToday ? 'NOW' : hr) : '',
+                    bottom: showTick ? (isToday ? 'LIVE' : 'UTC') : '',
+                    isToday
+                };
+            }
+
             let weekday = '';
             let dayNum = '';
             if (day.date && /^\d{4}-\d{2}-\d{2}$/.test(day.date)) {
@@ -1737,7 +2136,8 @@
         }
 
         function updateHistoryInspector(idx) {
-            const days = latestAnalytics7d.days || [];
+            const dataset = getActiveHistoryDataset();
+            const days = dataset.days || [];
             const dateEl = document.getElementById('insp-date');
             const gbEl = document.getElementById('insp-gb');
             const renEl = document.getElementById('insp-renames');
@@ -1746,8 +2146,10 @@
 
             const safeIdx = (idx >= 0 && idx < days.length) ? idx : days.length - 1;
             const day = days[safeIdx];
-            const isToday = safeIdx === days.length - 1;
-            const labelTag = isToday ? 'Today (UTC)' : (day.label || '');
+            const isLatest = safeIdx === days.length - 1;
+            const labelTag = historyWindow === '24h'
+                ? (isLatest ? 'Current Hour (UTC)' : (day.label || ''))
+                : (isLatest ? 'Today (UTC)' : (day.label || ''));
 
             dateEl.innerText = labelTag ? `${day.date} • ${labelTag}` : day.date;
             gbEl.innerText = `${Number(day.gb_transferred || 0).toFixed(2)} GB`;
@@ -1775,21 +2177,43 @@
             ctx.fill();
         }
 
-        function applyAnalytics7dUpdate(data) {
-            if (!data || !Array.isArray(data.days)) return;
-            latestAnalytics7d = data;
+        function refreshHistorySummaryAndChart() {
+            const dataset = getActiveHistoryDataset();
+            const winTag = historyWindow === '24h' ? '24H' : '7D';
+            document.getElementById('history-card-heading').innerText =
+                historyWindow === '24h' ? '24-Hour Volume & Rename History' : '7-Day Volume & Rename History';
+            document.getElementById('lbl-hist-win-1').innerText = winTag;
+            document.getElementById('lbl-hist-win-2').innerText = winTag;
+            document.getElementById('lbl-hist-win-3').innerText = winTag;
 
-            if (data.summary) {
-                document.getElementById('val-7d-gb').innerText = `${Number(data.summary.total_gb || 0).toFixed(2)} GB`;
-                document.getElementById('val-7d-renames').innerText = data.summary.total_renames_short ?? data.summary.total_renames ?? '0';
-                document.getElementById('val-7d-peak').innerText = data.summary.peak_active_tasks ?? 0;
+            if (dataset && dataset.summary) {
+                document.getElementById('val-7d-gb').innerText = `${Number(dataset.summary.total_gb || 0).toFixed(2)} GB`;
+                document.getElementById('val-7d-renames').innerText = dataset.summary.total_renames_short ?? dataset.summary.total_renames ?? '0';
+                document.getElementById('val-7d-peak').innerText = dataset.summary.peak_active_tasks ?? 0;
             }
 
-            if (data.days.length > 0 && (!userPinnedHistoryDay || selectedHistoryIdx < 0 || selectedHistoryIdx >= data.days.length)) {
-                selectedHistoryIdx = data.days.length - 1;
+            const days = (dataset && Array.isArray(dataset.days)) ? dataset.days : [];
+            if (days.length > 0 && (!userPinnedHistoryDay || selectedHistoryIdx < 0 || selectedHistoryIdx >= days.length)) {
+                selectedHistoryIdx = days.length - 1;
             }
             updateHistoryInspector(selectedHistoryIdx);
             draw7DayHistoryChart();
+        }
+
+        function applyAnalytics7dUpdate(data) {
+            if (!data || !Array.isArray(data.days)) return;
+            latestAnalytics7d = data;
+            if (historyWindow === '7d') {
+                refreshHistorySummaryAndChart();
+            }
+        }
+
+        function applyAnalytics24hUpdate(data) {
+            if (!data || !Array.isArray(data.days)) return;
+            latestAnalytics24h = data;
+            if (historyWindow === '24h') {
+                refreshHistorySummaryAndChart();
+            }
         }
 
         function getHistoryChartGeometry(rect) {
@@ -1805,7 +2229,7 @@
         function draw7DayHistoryChart() {
             const canvas = document.getElementById('history-7d-canvas');
             if (!canvas) return;
-            const days = latestAnalytics7d.days || [];
+            const days = getActiveHistoryDataset().days || [];
             const dpr = window.devicePixelRatio || 1;
             const rect = canvas.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) return;
@@ -1824,7 +2248,7 @@
                 ctx.fillStyle = '#64748b';
                 ctx.font = '12px Inter, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('Collecting 7-day MongoDB rollup metrics...', rect.width / 2, rect.height / 2);
+                ctx.fillText('Collecting MongoDB rollup metrics...', rect.width / 2, rect.height / 2);
                 ctx.restore();
                 return;
             }
@@ -1840,7 +2264,7 @@
             const gridSteps = 3;
             ctx.font = '500 10px "JetBrains Mono", monospace';
             for (let i = 0; i <= gridSteps; i++) {
-                const ratio = i / gridSteps; // 0 = top, 1 = bottom
+                const ratio = i / gridSteps;
                 const gy = Math.round(padTop + chartH * ratio) + 0.5;
 
                 ctx.strokeStyle = i === gridSteps ? 'rgba(148, 163, 184, 0.26)' : 'rgba(148, 163, 184, 0.09)';
@@ -1883,14 +2307,13 @@
                 const centerX = colLeft + colW / 2;
                 const isSelected = idx === activeIdx;
 
-                // Selected / hovered column highlight: top-rounded pill ending flush at baseY
                 if (isSelected) {
-                    const selX = colLeft + 2;
-                    const selW = Math.max(0, colW - 4);
+                    const selX = colLeft + 1;
+                    const selW = Math.max(0, colW - 2);
                     const selH = chartH + 8;
-                    drawTopRoundedBar(ctx, selX, baseY, selW, selH, 8, 'rgba(59, 130, 246, 0.11)');
+                    drawTopRoundedBar(ctx, selX, baseY, selW, selH, 5, 'rgba(59, 130, 246, 0.12)');
 
-                    buildTopRoundedPath(ctx, selX, baseY, selW, selH, 8);
+                    buildTopRoundedPath(ctx, selX, baseY, selW, selH, 5);
                     ctx.strokeStyle = 'rgba(96, 165, 250, 0.35)';
                     ctx.lineWidth = 1;
                     ctx.stroke();
@@ -1902,10 +2325,12 @@
                 const hasActivity = gbVal > 0 || renVal > 0 || peakVal > 0;
 
                 if (historyChartMode === 'combined') {
-                    const barGap = Math.max(3, Math.min(6, colW * 0.08));
-                    const barW = Math.max(7, Math.min(22, (colW - barGap * 3) / 2));
-                    const gbH = gbVal > 0 ? Math.min(chartH, Math.max(6, (gbVal / maxGb) * chartH)) : 0;
-                    const renH = renVal > 0 ? Math.min(chartH, Math.max(6, (renVal / maxRenames) * chartH)) : 0;
+                    const barGap = colW < 12 ? 1 : Math.max(2, Math.min(6, colW * 0.08));
+                    const maxPairW = Math.max(4, colW - (colW < 12 ? 1.5 : barGap * 2));
+                    const barW = Math.max(2, Math.min(22, (maxPairW - barGap) / 2));
+                    const barRadius = colW < 12 ? 2 : 4;
+                    const gbH = gbVal > 0 ? Math.min(chartH, Math.max(4, (gbVal / maxGb) * chartH)) : 0;
+                    const renH = renVal > 0 ? Math.min(chartH, Math.max(4, (renVal / maxRenames) * chartH)) : 0;
                     const leftBarX = centerX - barW - barGap / 2;
                     const rightBarX = centerX + barGap / 2;
 
@@ -1913,18 +2338,18 @@
                         const gbGrad = ctx.createLinearGradient(0, baseY - gbH, 0, baseY);
                         gbGrad.addColorStop(0, '#34d399');
                         gbGrad.addColorStop(1, '#059669');
-                        drawTopRoundedBar(ctx, leftBarX, baseY, barW, gbH, 5, gbGrad);
+                        drawTopRoundedBar(ctx, leftBarX, baseY, barW, gbH, barRadius, gbGrad);
                     }
 
                     if (renH > 0) {
                         const renGrad = ctx.createLinearGradient(0, baseY - renH, 0, baseY);
                         renGrad.addColorStop(0, '#c084fc');
                         renGrad.addColorStop(1, '#7c3aed');
-                        drawTopRoundedBar(ctx, rightBarX, baseY, barW, renH, 5, renGrad);
+                        drawTopRoundedBar(ctx, rightBarX, baseY, barW, renH, barRadius, renGrad);
                     }
 
                     const highestH = Math.max(gbH, renH);
-                    if (peakVal > 0) {
+                    if (peakVal > 0 && historyWindow === '7d') {
                         const rawBadgeY = baseY - highestH - 6;
                         const badgeY = Math.max(padTop - 2, Math.min(baseY - 11, rawBadgeY));
                         ctx.font = isCompact
@@ -1933,64 +2358,84 @@
                         ctx.textAlign = 'center';
                         ctx.fillStyle = '#60a5fa';
                         ctx.fillText(`⚡${peakVal}`, centerX, badgeY, colW - 2);
-                    } else if (!hasActivity) {
+                    } else if (!hasActivity && historyWindow === '7d') {
                         ctx.font = '500 10px "JetBrains Mono", monospace';
                         ctx.textAlign = 'center';
                         ctx.fillStyle = 'rgba(100, 116, 139, 0.55)';
                         ctx.fillText('—', centerX, baseY - 10, colW - 4);
                     }
                 } else {
-                    // Single focused bar mode ('volume' or 'renames') with direct value label above bar
                     const isVol = historyChartMode === 'volume';
                     const val = isVol ? gbVal : renVal;
                     const maxScale = isVol ? maxGb : maxRenames;
-                    const barW = Math.max(14, Math.min(34, colW * 0.52));
-                    const barH = val > 0 ? Math.min(chartH, Math.max(6, (val / maxScale) * chartH)) : 0;
+                    const barW = Math.max(3, Math.min(34, colW * 0.62));
+                    const barRadius = colW < 12 ? 2.5 : 5;
+                    const barH = val > 0 ? Math.min(chartH, Math.max(4, (val / maxScale) * chartH)) : 0;
                     const barX = centerX - barW / 2;
 
                     if (barH > 0) {
                         const grad = ctx.createLinearGradient(0, baseY - barH, 0, baseY);
                         grad.addColorStop(0, isVol ? '#34d399' : '#c084fc');
                         grad.addColorStop(1, isVol ? '#059669' : '#7c3aed');
-                        drawTopRoundedBar(ctx, barX, baseY, barW, barH, 6, grad);
+                        drawTopRoundedBar(ctx, barX, baseY, barW, barH, barRadius, grad);
                     }
 
-                    ctx.font = isCompact
-                        ? '700 9px "JetBrains Mono", monospace'
-                        : '700 10px "JetBrains Mono", monospace';
-                    ctx.textAlign = 'center';
-                    if (val > 0) {
-                        ctx.fillStyle = isVol ? '#6ee7b7' : '#e9d5ff';
-                        const labelStr = isVol ? formatCompactGb(val) : formatCompactNumber(val);
-                        const labelY = Math.max(padTop - 2, Math.min(baseY - 11, baseY - barH - 6));
-                        ctx.fillText(labelStr, centerX, labelY, colW - 2);
-                    } else {
-                        ctx.fillStyle = 'rgba(100, 116, 139, 0.55)';
-                        ctx.fillText('—', centerX, baseY - 10, colW - 4);
+                    if (historyWindow === '7d') {
+                        ctx.font = isCompact
+                            ? '700 9px "JetBrains Mono", monospace'
+                            : '700 10px "JetBrains Mono", monospace';
+                        ctx.textAlign = 'center';
+                        if (val > 0) {
+                            ctx.fillStyle = isVol ? '#6ee7b7' : '#e9d5ff';
+                            const labelStr = isVol ? formatCompactGb(val) : formatCompactNumber(val);
+                            const labelY = Math.max(padTop - 2, Math.min(baseY - 11, baseY - barH - 6));
+                            ctx.fillText(labelStr, centerX, labelY, colW - 2);
+                        } else {
+                            ctx.fillStyle = 'rgba(100, 116, 139, 0.55)';
+                            ctx.fillText('—', centerX, baseY - 10, colW - 4);
+                        }
                     }
                 }
 
-                // 2-line X-axis date labels strictly below baseY
-                const axis = parseDayAxisLabels(day, idx, days.length, isCompact);
-                ctx.textAlign = 'center';
-                ctx.font = (axis.isToday || isSelected)
-                    ? '700 10px "JetBrains Mono", monospace'
-                    : '600 10px "JetBrains Mono", monospace';
-                ctx.fillStyle = axis.isToday ? '#60a5fa' : (isSelected ? '#f8fafc' : '#94a3b8');
-                ctx.fillText(axis.top, centerX, baseY + 14, colW - 4);
-
-                ctx.font = '500 9.5px "JetBrains Mono", monospace';
-                ctx.fillStyle = (axis.isToday || isSelected) ? '#cbd5e1' : '#64748b';
-                ctx.fillText(axis.bottom, centerX, baseY + 27, colW - 4);
+                // 2-line X-axis date/time labels strictly below baseY
+                const axis = parseDayAxisLabels(day, idx, days.length, isCompact, colW);
+                if (axis.top) {
+                    ctx.textAlign = 'center';
+                    ctx.font = (axis.isToday || isSelected)
+                        ? '700 9.5px "JetBrains Mono", monospace'
+                        : '600 9.5px "JetBrains Mono", monospace';
+                    ctx.fillStyle = axis.isToday ? '#60a5fa' : (isSelected ? '#f8fafc' : '#94a3b8');
+                    ctx.fillText(axis.top, centerX, baseY + 14);
+                }
+                if (axis.bottom) {
+                    ctx.textAlign = 'center';
+                    ctx.font = '500 9px "JetBrains Mono", monospace';
+                    ctx.fillStyle = (axis.isToday || isSelected) ? '#cbd5e1' : '#64748b';
+                    ctx.fillText(axis.bottom, centerX, baseY + 26);
+                }
             });
 
             ctx.restore();
         }
 
-        // Interactive mode switcher & hover/tap selection on 7-day chart
+        // Interactive mode/window switcher & hover/tap selection on history chart
         (function setupHistoryChartInteractions() {
             const canvas = document.getElementById('history-7d-canvas');
             const modeTabs = document.getElementById('history-mode-tabs');
+            const windowTabs = document.getElementById('history-window-tabs');
+
+            if (windowTabs) {
+                windowTabs.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.history-range-btn');
+                    if (!btn) return;
+                    windowTabs.querySelectorAll('.history-range-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    historyWindow = btn.dataset.window || '7d';
+                    userPinnedHistoryDay = false;
+                    selectedHistoryIdx = -1;
+                    refreshHistorySummaryAndChart();
+                });
+            }
 
             if (modeTabs) {
                 modeTabs.addEventListener('click', (e) => {
@@ -2006,7 +2451,7 @@
             if (!canvas) return;
 
             function resolveDayIndex(clientX) {
-                const days = latestAnalytics7d.days || [];
+                const days = getActiveHistoryDataset().days || [];
                 if (!days.length) return -1;
                 const rect = canvas.getBoundingClientRect();
                 const { padLeft, chartW } = getHistoryChartGeometry(rect);
@@ -2062,7 +2507,7 @@
             else el.classList.add(defaultClass);
         }
 
-        // --- Render Worker Nodes with Live FloodWait Countdowns & Speeds ---
+        // --- Render Worker Nodes with Live FloodWait Countdowns, Speeds & Admin Controls ---
         function renderWorkerNodes(nodes) {
             const grid = document.getElementById('worker-node-grid');
             if (!nodes || nodes.length === 0) {
@@ -2071,19 +2516,32 @@
             }
 
             grid.innerHTML = nodes.map(node => {
-                const isLimited = !node.healthy;
-                const isBusy = node.healthy && node.load > 0;
+                const isDisabled = Boolean(node.disabled || node.status === 'Disabled');
+                const isLimited = !node.healthy || isDisabled;
+                const isBusy = node.healthy && !isDisabled && node.load > 0;
                 const statusClass = isLimited ? 'limited' : (isBusy ? 'busy' : 'idle');
                 const cardClass = isLimited ? 'node-card rate-limited' : (isBusy ? 'node-card busy-node' : 'node-card');
                 const loadPct = isLimited ? 100 : Math.min(100, node.load * 25);
 
-                const statusLabel = isLimited
-                    ? (node.cooldown_sec > 0 ? `Cooldown: ${formatCooldown(node.cooldown_sec)}` : 'Rate-Limited')
-                    : escapeHtml(node.status);
+                const statusLabel = isDisabled
+                    ? 'Disabled'
+                    : (!node.healthy
+                        ? (node.cooldown_sec > 0 ? `Cooldown: ${formatCooldown(node.cooldown_sec)}` : 'Rate-Limited')
+                        : escapeHtml(node.status));
 
                 const speedHtml = isBusy
                     ? `<span class="node-speed">${escapeHtml(node.speed || '0 B/s')}</span>`
-                    : `<span class="node-speed idle-speed">${node.connected ? '0 B/s' : 'Standby'}</span>`;
+                    : `<span class="node-speed idle-speed">${node.connected && !isDisabled ? '0 B/s' : 'Standby'}</span>`;
+
+                const adminControls = (isAdminAuthenticated && node.worker_id)
+                    ? `<div class="admin-row" style="margin-top: 0.25rem;">
+                        <button class="admin-btn heal admin-btn-xs" onclick="triggerAdminAction('worker_control', true, {worker_id:'${escapeHtml(node.worker_id)}', op:'heal'})">Heal</button>
+                        ${isDisabled
+                            ? `<button class="admin-btn primary admin-btn-xs" onclick="triggerAdminAction('worker_control', true, {worker_id:'${escapeHtml(node.worker_id)}', op:'enable'})">Enable</button>`
+                            : `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('worker_control', true, {worker_id:'${escapeHtml(node.worker_id)}', op:'disable'})">Disable</button>`
+                        }
+                    </div>`
+                    : '';
 
                 return `
                     <div class="${cardClass}">
@@ -2098,6 +2556,7 @@
                         <div class="node-bar">
                             <div class="node-bar-fill ${isLimited ? 'limited-bar' : ''}" style="width: ${loadPct}%;"></div>
                         </div>
+                        ${adminControls}
                     </div>
                 `;
             }).join('');
@@ -2124,16 +2583,24 @@
                 upList.forEach(t => {
                     const extBadge = formatExtBadge(t);
                     const workerBadge = t.worker_name ? `<span class="q-worker-pill mono">${escapeHtml(t.worker_name)}</span>` : '';
+                    const ownerBadge = t.is_owner ? `<span class="q-you-pill mono">YOU</span>` : (t.is_masked ? `<span class="q-ext-pill mono"><i class="fas fa-lock"></i></span>` : '');
+                    const cancelBtn = (isAdminAuthenticated && t.task_id)
+                        ? `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})"><i class="fas fa-xmark"></i></button>`
+                        : '';
                     const fname = t.filename || 'Unknown File';
                     itemsHtml += `
                         <div class="q-item">
                             <div class="q-top">
                                 <div class="q-badges">
                                     <span class="q-tag up"><i class="fas fa-arrow-up"></i> Uploading</span>
+                                    ${ownerBadge}
                                     ${extBadge}
                                     ${workerBadge}
                                 </div>
-                                <span class="q-pct mono">${t.percentage}%</span>
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <span class="q-pct mono">${t.percentage}%</span>
+                                    ${cancelBtn}
+                                </div>
                             </div>
                             <div class="q-filename mono" title="${escapeHtml(fname)}">${escapeHtml(fname)}</div>
                             <div class="q-bar-bg"><div class="q-bar-fill up" style="width: ${t.percentage}%;"></div></div>
@@ -2149,16 +2616,24 @@
                 dlList.forEach(t => {
                     const extBadge = formatExtBadge(t);
                     const workerBadge = t.worker_name ? `<span class="q-worker-pill mono">${escapeHtml(t.worker_name)}</span>` : '';
+                    const ownerBadge = t.is_owner ? `<span class="q-you-pill mono">YOU</span>` : (t.is_masked ? `<span class="q-ext-pill mono"><i class="fas fa-lock"></i></span>` : '');
+                    const cancelBtn = (isAdminAuthenticated && t.task_id)
+                        ? `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})"><i class="fas fa-xmark"></i></button>`
+                        : '';
                     const fname = t.filename || 'Unknown File';
                     itemsHtml += `
                         <div class="q-item">
                             <div class="q-top">
                                 <div class="q-badges">
                                     <span class="q-tag dl"><i class="fas fa-arrow-down"></i> Downloading</span>
+                                    ${ownerBadge}
                                     ${extBadge}
                                     ${workerBadge}
                                 </div>
-                                <span class="q-pct mono">${t.percentage}%</span>
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <span class="q-pct mono">${t.percentage}%</span>
+                                    ${cancelBtn}
+                                </div>
                             </div>
                             <div class="q-filename mono" title="${escapeHtml(fname)}">${escapeHtml(fname)}</div>
                             <div class="q-bar-bg"><div class="q-bar-fill" style="width: ${t.percentage}%;"></div></div>
@@ -2173,15 +2648,23 @@
             if (activeFilter === 'all' || activeFilter === 'pending') {
                 waitList.forEach(t => {
                     const extBadge = formatExtBadge(t);
+                    const ownerBadge = t.is_owner ? `<span class="q-you-pill mono">YOU</span>` : '';
+                    const cancelBtn = (isAdminAuthenticated && t.task_id)
+                        ? `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})"><i class="fas fa-xmark"></i></button>`
+                        : '';
                     const fname = t.filename || 'Unknown File';
                     itemsHtml += `
                         <div class="q-item" style="opacity: 0.84;">
                             <div class="q-top">
                                 <div class="q-badges">
                                     <span class="q-tag wait"><i class="fas fa-clock"></i> Queued</span>
+                                    ${ownerBadge}
                                     ${extBadge}
                                 </div>
-                                <span class="q-pct mono" style="color: var(--text-muted); font-size: 0.78rem;">${escapeHtml(t.size || 'Waiting')}</span>
+                                <div style="display:flex; align-items:center; gap:0.5rem;">
+                                    <span class="q-pct mono" style="color: var(--text-muted); font-size: 0.78rem;">${escapeHtml(t.size || 'Waiting')}</span>
+                                    ${cancelBtn}
+                                </div>
                             </div>
                             <div class="q-filename mono" style="color: var(--text-secondary);" title="${escapeHtml(fname)}">${escapeHtml(fname)}</div>
                         </div>`;
@@ -2211,6 +2694,10 @@
 
         // --- Apply Status Payload to DOM ---
         function applyStatusUpdate(data) {
+            if (typeof data.is_admin === 'boolean') {
+                isAdminAuthenticated = data.is_admin;
+            }
+
             document.getElementById('val-bot_status').innerText = data.bot_status;
             const statusBadge = document.getElementById('engine-status-badge');
             const pauseBtn = document.getElementById('btn-toggle-pause');
@@ -2252,7 +2739,10 @@
             const procSub = document.getElementById('processing-sub-text');
             if (data.active_tasks > 0) {
                 procBox.classList.add('active-glow');
-                procSub.innerText = `${data.active_tasks} file${data.active_tasks === 1 ? '' : 's'} active`;
+                const batchSuffix = typeof data.active_batches === 'number' && data.active_batches > 0
+                    ? ` • ${data.active_batches} session${data.active_batches === 1 ? '' : 's'}`
+                    : '';
+                procSub.innerText = `${data.active_tasks} file${data.active_tasks === 1 ? '' : 's'} active${batchSuffix}`;
             } else {
                 procBox.classList.remove('active-glow');
                 procSub.innerText = 'Pipeline idle';
@@ -2267,6 +2757,30 @@
                 showToast('A worker node entered FloodWait cooldown.', 'fa-exclamation-triangle', '#f59e0b');
             }
             prevHealthyWorkers = data.healthy_workers;
+
+            // Admin live state sync (maintenance message & broadcast progress)
+            if (isAdminAuthenticated) {
+                const maintInput = document.getElementById('maint-msg-input');
+                if (maintInput && document.activeElement !== maintInput && typeof data.maintenance_message === 'string') {
+                    maintInput.value = data.maintenance_message;
+                }
+
+                if (data.broadcast) {
+                    const b = data.broadcast;
+                    const pBox = document.getElementById('broadcast-progress-box');
+                    const stopBtn = document.getElementById('btn-broadcast-stop');
+                    const startBtn = document.getElementById('btn-broadcast-start');
+                    if (b.running || b.total > 0) {
+                        pBox.style.display = 'block';
+                        const done = (b.sent || 0) + (b.failed || 0);
+                        const pct = b.total > 0 ? Math.round((done / b.total) * 100) : 0;
+                        document.getElementById('broadcast-progress-text').innerText = `${b.sent || 0} sent • ${b.failed || 0} failed / ${b.total || 0}`;
+                        document.getElementById('broadcast-progress-bar').style.width = `${pct}%`;
+                    }
+                    stopBtn.style.display = b.running ? 'inline-flex' : 'none';
+                    startBtn.disabled = Boolean(b.running);
+                }
+            }
 
             // Hardware meters
             document.getElementById('val-cpu_usage').innerText = data.cpu_usage + '%';
@@ -2305,15 +2819,22 @@
             document.getElementById('last-sync-time').innerText = now.toTimeString().split(' ')[0];
         }
 
-        // --- Initial 7-Day History Fetch ---
+        // --- Initial 7-Day & 24-Hour History Fetch ---
         async function fetchInitial7dAnalytics() {
             try {
-                const res = await fetch('/api/analytics/7d');
-                if (res.ok) {
-                    applyAnalytics7dUpdate(await res.json());
+                const headers = getAuthHeaders();
+                const [res7d, res24h] = await Promise.all([
+                    fetch('/api/analytics/7d', { headers }),
+                    fetch('/api/analytics/24h', { headers })
+                ]);
+                if (res7d.ok) {
+                    applyAnalytics7dUpdate(await res7d.json());
+                }
+                if (res24h.ok) {
+                    applyAnalytics24hUpdate(await res24h.json());
                 }
             } catch (err) {
-                console.error('7d analytics fetch error:', err);
+                console.error('Analytics fetch error:', err);
             }
         }
 
@@ -2324,14 +2845,17 @@
             if (fallbackInterval) return;
             fallbackInterval = setInterval(async () => {
                 try {
-                    const [sRes, qRes, aRes] = await Promise.all([
-                        fetch('/api/status'),
-                        fetch('/api/queue'),
-                        fetch('/api/analytics/7d')
+                    const headers = getAuthHeaders();
+                    const [sRes, qRes, a7Res, a24Res] = await Promise.all([
+                        fetch('/api/status', { headers }),
+                        fetch('/api/queue', { headers }),
+                        fetch('/api/analytics/7d', { headers }),
+                        fetch('/api/analytics/24h', { headers })
                     ]);
                     if (sRes.ok) applyStatusUpdate(await sRes.json());
                     if (qRes.ok) renderTelemetry(await qRes.json());
-                    if (aRes.ok) applyAnalytics7dUpdate(await aRes.json());
+                    if (a7Res.ok) applyAnalytics7dUpdate(await a7Res.json());
+                    if (a24Res.ok) applyAnalytics24hUpdate(await a24Res.json());
                 } catch (err) {
                     console.error('Fallback polling error:', err);
                 }
@@ -2356,7 +2880,10 @@
                 return;
             }
 
-            const evtSource = new EventSource('/api/stream');
+            const streamUrl = tmaInitData
+                ? `/api/stream?initData=${encodeURIComponent(tmaInitData)}`
+                : '/api/stream';
+            const evtSource = new EventSource(streamUrl);
 
             evtSource.onopen = () => {
                 pill.className = 'stream-pill';
@@ -2370,6 +2897,7 @@
                     if (payload.status) applyStatusUpdate(payload.status);
                     if (payload.queue) renderTelemetry(payload.queue);
                     if (payload.analytics_7d) applyAnalytics7dUpdate(payload.analytics_7d);
+                    if (payload.analytics_24h) applyAnalytics24hUpdate(payload.analytics_24h);
                 } catch (err) {
                     console.error('SSE parse error:', err);
                 }
@@ -2392,9 +2920,11 @@
             document.fonts.ready.then(() => draw7DayHistoryChart());
         }
 
-        initTelegramMiniApp();
-        fetchInitial7dAnalytics();
-        connectTelemetryStream();
+        (async function bootstrapDashboard() {
+            await initTelegramMiniApp();
+            fetchInitial7dAnalytics();
+            connectTelemetryStream();
+        })();
     </script>
 </body>
 </html>
