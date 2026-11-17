@@ -144,6 +144,7 @@
             display: flex;
             align-items: center;
             gap: 0.75rem;
+            flex-wrap: wrap;
         }
 
         .stream-pill {
@@ -189,25 +190,31 @@
             border-radius: 10px;
         }
 
-        /* --- Telegram Mini App Admin Command Bar --- */
-        .admin-bar-wrapper {
+        /* --- Dedicated Admin Console Page View --- */
+        .admin-console-page {
             max-width: 1240px;
             width: 100%;
-            margin: 0 auto 0.75rem;
-            padding: 0 2rem;
+            margin: 0 auto;
+            padding: 0.5rem 2rem 3.5rem;
             display: none;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .admin-console-page.active {
+            display: flex;
         }
 
         .admin-bar {
             background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.9));
             backdrop-filter: blur(16px);
             border: 1px solid rgba(96, 165, 250, 0.35);
-            border-radius: 16px;
-            padding: 0.9rem 1.25rem;
+            border-radius: 20px;
+            padding: 1.35rem 1.5rem;
             display: flex;
             flex-direction: column;
-            gap: 0.9rem;
-            box-shadow: 0 8px 25px rgba(59, 130, 246, 0.12);
+            gap: 1.15rem;
+            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.14);
         }
 
         .admin-bar-top {
@@ -222,7 +229,7 @@
             display: flex;
             align-items: center;
             gap: 0.6rem;
-            font-size: 0.8rem;
+            font-size: 0.84rem;
             font-weight: 600;
             color: #93c5fd;
         }
@@ -231,9 +238,9 @@
             background: rgba(59, 130, 246, 0.2);
             border: 1px solid rgba(96, 165, 250, 0.4);
             color: #60a5fa;
-            padding: 0.2rem 0.55rem;
+            padding: 0.22rem 0.6rem;
             border-radius: 6px;
-            font-size: 0.68rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
@@ -313,46 +320,48 @@
         }
 
         .admin-btn-xs {
-            padding: 0.22rem 0.5rem;
-            font-size: 0.68rem;
-            border-radius: 6px;
+            padding: 0.26rem 0.55rem;
+            font-size: 0.7rem;
+            border-radius: 7px;
         }
 
-        /* --- Expanded Admin Tools Drawer --- */
+        /* --- Unified Admin Tools Grid --- */
         .admin-drawer {
-            display: none;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 0.9rem;
-            padding-top: 0.85rem;
-            border-top: 1px solid rgba(148, 163, 184, 0.14);
-        }
-
-        .admin-drawer.open {
             display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(148, 163, 184, 0.14);
         }
 
         .admin-panel {
             background: var(--bg-surface);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 0.85rem;
+            border-radius: 14px;
+            padding: 1rem;
             display: flex;
             flex-direction: column;
-            gap: 0.6rem;
+            gap: 0.65rem;
+        }
+
+        .admin-panel.broadcast-full {
+            grid-column: 1 / -1;
         }
 
         .admin-panel-title {
-            font-size: 0.72rem;
+            font-size: 0.74rem;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.06em;
             color: #93c5fd;
             display: flex;
             align-items: center;
-            gap: 0.4rem;
+            justify-content: space-between;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
-        .admin-input, .admin-textarea {
+        .admin-input, .admin-textarea, .admin-select {
             width: 100%;
             background: rgba(15, 23, 42, 0.85);
             border: 1px solid var(--border-color);
@@ -365,13 +374,14 @@
             transition: border-color 0.2s ease;
         }
 
-        .admin-input:focus, .admin-textarea:focus {
+        .admin-input:focus, .admin-textarea:focus, .admin-select:focus {
             border-color: rgba(96, 165, 250, 0.5);
         }
 
         .admin-textarea {
-            min-height: 58px;
+            min-height: 92px;
             resize: vertical;
+            line-height: 1.45;
         }
 
         .admin-row {
@@ -390,6 +400,205 @@
             display: none;
             flex-direction: column;
             gap: 0.5rem;
+        }
+
+        /* --- Broadcast Studio (Formatting Toolbar, Media Picker & Live Preview) --- */
+        .bc-studio-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 0.9rem;
+            align-items: stretch;
+        }
+
+        .bc-composer-col {
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+        }
+
+        .bc-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.3rem;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            padding: 0.35rem 0.45rem;
+        }
+
+        .bc-fmt-btn {
+            background: rgba(30, 41, 59, 0.75);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            color: var(--text-primary);
+            border-radius: 6px;
+            padding: 0.22rem 0.48rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: inherit;
+        }
+
+        .bc-fmt-btn:hover {
+            border-color: rgba(96, 165, 250, 0.45);
+            background: rgba(59, 130, 246, 0.2);
+            color: #93c5fd;
+        }
+
+        .bc-fmt-btn.disabled {
+            opacity: 0.35;
+            pointer-events: none;
+        }
+
+        .bc-textarea-attached {
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.74rem;
+        }
+
+        .bc-media-drop {
+            border: 1px dashed rgba(96, 165, 250, 0.35);
+            background: rgba(15, 23, 42, 0.65);
+            border-radius: 8px;
+            padding: 0.5rem 0.7rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            cursor: pointer;
+            font-size: 0.73rem;
+            color: var(--text-secondary);
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .bc-media-drop:hover, .bc-media-drop.dragover {
+            border-color: rgba(96, 165, 250, 0.65);
+            background: rgba(59, 130, 246, 0.12);
+            color: var(--text-primary);
+        }
+
+        .bc-media-url-row {
+            display: grid;
+            grid-template-columns: 1fr 125px;
+            gap: 0.45rem;
+        }
+
+        .bc-preview-col {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.7rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+
+        .bc-preview-label {
+            font-size: 0.66rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .tg-preview-bubble {
+            background: #17253b;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 12px 12px 12px 4px;
+            overflow: hidden;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+        }
+
+        .tg-preview-media {
+            display: none;
+            background: #0b1220;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        }
+
+        .tg-preview-media.visible {
+            display: block;
+        }
+
+        .tg-preview-media img, .tg-preview-media video {
+            width: 100%;
+            max-height: 155px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .tg-preview-file-badge {
+            padding: 0.55rem 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            font-size: 0.73rem;
+            color: var(--text-primary);
+        }
+
+        .tg-preview-body {
+            padding: 0.65rem 0.8rem;
+            font-size: 0.78rem;
+            line-height: 1.45;
+            color: var(--text-primary);
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+
+        .tg-preview-body code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(2, 6, 23, 0.7);
+            padding: 0.08rem 0.32rem;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            color: #93c5fd;
+        }
+
+        .tg-preview-body pre {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(2, 6, 23, 0.85);
+            padding: 0.45rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.71rem;
+            overflow-x: auto;
+            margin: 0.25rem 0;
+        }
+
+        .tg-preview-body blockquote {
+            border-left: 2px solid #60a5fa;
+            padding-left: 0.5rem;
+            color: #cbd5e1;
+            margin: 0.2rem 0;
+        }
+
+        .tg-preview-body a {
+            color: #60a5fa;
+            text-decoration: underline;
+        }
+
+        .tg-spoiler-span {
+            background: rgba(148, 163, 184, 0.3);
+            color: transparent;
+            border-radius: 3px;
+            padding: 0 3px;
+            cursor: pointer;
+        }
+
+        .tg-spoiler-span:hover {
+            color: var(--text-primary);
+        }
+
+        .tg-preview-meta {
+            padding: 0 0.75rem 0.45rem;
+            text-align: right;
+            font-size: 0.64rem;
+            color: var(--text-secondary);
         }
 
         /* --- Bento Grid Dashboard --- */
@@ -1346,7 +1555,7 @@
             .traffic-layout {
                 grid-template-columns: 1fr;
             }
-            .admin-drawer.open {
+            .admin-drawer, .bc-studio-grid {
                 grid-template-columns: 1fr;
             }
             .quota-grid {
@@ -1355,7 +1564,7 @@
         }
 
         @media (max-width: 640px) {
-            header, .dashboard, .admin-bar-wrapper {
+            header, .dashboard, .admin-console-page {
                 padding-left: 1.15rem;
                 padding-right: 1.15rem;
             }
@@ -1389,6 +1598,9 @@
             .admin-btn {
                 justify-content: center;
             }
+            .bc-media-url-row {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -1414,6 +1626,9 @@
         </div>
 
         <div class="stream-controls">
+            <button type="button" class="admin-btn primary" id="btn-open-admin-console" style="display: none;" onclick="switchAdminView(true)">
+                <i class="fas fa-shield-halved"></i> Admin Console
+            </button>
             <div class="stream-pill" id="sse-pill">
                 <span class="pulse-dot"></span>
                 <span id="sse-status-text">Live Stream</span>
@@ -1422,8 +1637,8 @@
         </div>
     </header>
 
-    <!-- Telegram Mini App Authenticated Admin Command Bar -->
-    <div class="admin-bar-wrapper" id="admin-bar-wrapper">
+    <!-- Dedicated Admin Console View (Opens when Admin clicks "Admin Console") -->
+    <section class="admin-console-page" id="admin-console-page">
         <div class="admin-bar">
             <div class="admin-bar-top">
                 <div class="admin-identity">
@@ -1431,6 +1646,9 @@
                     <span id="admin-greeting">Authenticated via Telegram</span>
                 </div>
                 <div class="admin-actions">
+                    <button type="button" class="admin-btn" onclick="switchAdminView(false)">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </button>
                     <button class="admin-btn purge" id="btn-purge-queue" onclick="triggerAdminAction('purge_queue')">
                         <i class="fas fa-broom"></i> Purge Stuck Queue
                     </button>
@@ -1440,17 +1658,14 @@
                     <button class="admin-btn pause" id="btn-toggle-pause" onclick="triggerAdminAction('toggle_pause')">
                         <i class="fas fa-pause"></i> <span id="pause-btn-label">Pause Intake</span>
                     </button>
-                    <button class="admin-btn primary" id="btn-toggle-drawer" onclick="toggleAdminDrawer()">
-                        <i class="fas fa-sliders"></i> Tools
-                    </button>
                 </div>
             </div>
 
-            <!-- Collapsible Admin Management Drawer -->
-            <div class="admin-drawer" id="admin-drawer">
+            <!-- All Admin Management Tools Merged into One Page -->
+            <div class="admin-drawer">
                 <!-- Maintenance Notice -->
                 <div class="admin-panel">
-                    <div class="admin-panel-title"><i class="fas fa-bullhorn"></i> Maintenance Notice</div>
+                    <div class="admin-panel-title"><span><i class="fas fa-bullhorn"></i> Maintenance Notice</span></div>
                     <input type="text" class="admin-input" id="maint-msg-input" placeholder="Custom pause banner shown to users...">
                     <div class="admin-row">
                         <button class="admin-btn primary admin-btn-xs" onclick="saveMaintenanceMessage()"><i class="fas fa-save"></i> Save Notice</button>
@@ -1460,7 +1675,7 @@
 
                 <!-- User Inspector & Quota Control -->
                 <div class="admin-panel">
-                    <div class="admin-panel-title"><i class="fas fa-user-gear"></i> User Inspector & VIP</div>
+                    <div class="admin-panel-title"><span><i class="fas fa-user-gear"></i> User Inspector & VIP</span></div>
                     <div class="admin-row" style="flex-wrap: nowrap;">
                         <input type="text" class="admin-input" id="admin-user-query" placeholder="Telegram ID or @username..." onkeydown="if(event.key==='Enter') lookupAdminUser()">
                         <button class="admin-btn primary admin-btn-xs" onclick="lookupAdminUser()"><i class="fas fa-search"></i></button>
@@ -1468,29 +1683,128 @@
                     <div class="user-lookup-box" id="admin-user-result"></div>
                 </div>
 
-                <!-- Global Broadcast -->
+                <!-- Worker Fleet Controls -->
                 <div class="admin-panel">
-                    <div class="admin-panel-title"><i class="fas fa-paper-plane"></i> Global User Broadcast</div>
-                    <textarea class="admin-textarea" id="admin-broadcast-text" placeholder="Message to broadcast to all registered users..."></textarea>
-                    <div class="admin-row">
-                        <button class="admin-btn primary admin-btn-xs" id="btn-broadcast-start" onclick="startAdminBroadcast()"><i class="fas fa-rocket"></i> Send Broadcast</button>
-                        <button class="admin-btn purge admin-btn-xs" id="btn-broadcast-stop" style="display: none;" onclick="triggerAdminAction('broadcast_cancel', true)"><i class="fas fa-stop"></i> Stop</button>
+                    <div class="admin-panel-title">
+                        <span><i class="fas fa-network-wired"></i> Worker Fleet Controls</span>
+                        <span class="mono" id="admin-workers-summary" style="font-size:0.68rem; color:var(--text-secondary);">0 / 0 Healthy</span>
                     </div>
+                    <div id="admin-worker-list" style="display:flex; flex-direction:column; gap:0.45rem; max-height:220px; overflow-y:auto;">
+                        <span style="font-size:0.74rem; color:var(--text-muted);">Waiting for worker telemetry...</span>
+                    </div>
+                </div>
+
+                <!-- Live Queue Task Manager -->
+                <div class="admin-panel">
+                    <div class="admin-panel-title">
+                        <span><i class="fas fa-list-check"></i> Live Queue Manager</span>
+                        <span class="mono" id="admin-queue-summary" style="font-size:0.68rem; color:var(--text-secondary);">0 Tasks</span>
+                    </div>
+                    <div id="admin-queue-list" style="display:flex; flex-direction:column; gap:0.45rem; max-height:220px; overflow-y:auto;">
+                        <span style="font-size:0.74rem; color:var(--text-muted);">No active or queued tasks.</span>
+                    </div>
+                </div>
+
+                <!-- Global Rich Media & Formatted Broadcast Studio -->
+                <div class="admin-panel broadcast-full">
+                    <div class="admin-panel-title">
+                        <span><i class="fas fa-paper-plane"></i> Global User Broadcast Studio</span>
+                        <div class="admin-row">
+                            <span style="font-size:0.68rem; color:var(--text-secondary); text-transform:none; letter-spacing:normal;">Format:</span>
+                            <select class="admin-select" id="admin-broadcast-parse-mode" style="width:auto; padding:0.24rem 0.55rem; font-size:0.7rem;" onchange="onBroadcastParseModeChange()">
+                                <option value="html" selected>HTML</option>
+                                <option value="markdown">Markdown</option>
+                                <option value="plain">Plain Text</option>
+                            </select>
+                        </div>
+                    </div>
+
                     <div id="broadcast-progress-box" style="display: none;">
                         <div class="meter-header mono" style="font-size: 0.68rem; margin-bottom: 0.25rem;">
-                            <span>Progress</span>
+                            <span>Broadcast Progress</span>
                             <span id="broadcast-progress-text">0 sent • 0 failed / 0</span>
                         </div>
                         <div class="progress-track" style="height: 6px;">
                             <div class="progress-fill fill-ram" id="broadcast-progress-bar" style="width: 0%;"></div>
                         </div>
                     </div>
+
+                    <div class="bc-studio-grid">
+                        <!-- Left: Direct Formatting Toolbar + Textarea + Media Picker -->
+                        <div class="bc-composer-col">
+                            <div>
+                                <div class="bc-toolbar" id="bc-fmt-toolbar">
+                                    <button type="button" class="bc-fmt-btn" title="Bold" onclick="applyBroadcastFormat('bold')"><b>B</b></button>
+                                    <button type="button" class="bc-fmt-btn" title="Italic" onclick="applyBroadcastFormat('italic')"><i>I</i></button>
+                                    <button type="button" class="bc-fmt-btn" title="Underline" onclick="applyBroadcastFormat('underline')"><u>U</u></button>
+                                    <button type="button" class="bc-fmt-btn" title="Strikethrough" onclick="applyBroadcastFormat('strike')"><s>S</s></button>
+                                    <button type="button" class="bc-fmt-btn" title="Spoiler" onclick="applyBroadcastFormat('spoiler')">Spoiler</button>
+                                    <button type="button" class="bc-fmt-btn mono" title="Inline Code" onclick="applyBroadcastFormat('code')">&lt;/&gt;</button>
+                                    <button type="button" class="bc-fmt-btn mono" title="Code Block" onclick="applyBroadcastFormat('pre')">Pre</button>
+                                    <button type="button" class="bc-fmt-btn" title="Blockquote" onclick="applyBroadcastFormat('quote')">Quote</button>
+                                    <button type="button" class="bc-fmt-btn" title="Link" onclick="applyBroadcastFormat('link')"><i class="fas fa-link"></i> Link</button>
+                                </div>
+                                <textarea class="admin-textarea bc-textarea-attached" id="admin-broadcast-text" placeholder="Message or media caption to broadcast to all registered users..." oninput="updateBroadcastLivePreview()"></textarea>
+                            </div>
+
+                            <div class="admin-row" style="justify-content: space-between; font-size: 0.69rem; color: var(--text-secondary);">
+                                <label style="display:inline-flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                                    <input type="checkbox" id="admin-broadcast-disable-preview" onchange="updateBroadcastLivePreview()">
+                                    Disable link web preview
+                                </label>
+                                <span class="mono" id="bc-char-counter">0 / 4096</span>
+                            </div>
+
+                            <!-- Media File Picker -->
+                            <div class="bc-media-drop" id="bc-media-drop" onclick="document.getElementById('admin-broadcast-file').click()">
+                                <input type="file" id="admin-broadcast-file" style="display:none;" accept="image/*,video/*,audio/*,.gif,.pdf,.zip,.apk,.mkv,.mp4,.mp3" onchange="handleBroadcastFileSelect(this.files[0])">
+                                <span id="bc-media-file-label"><i class="fas fa-paperclip" style="color:#60a5fa;"></i> Attach Media (Photo, Video, GIF, Audio, Document up to 28 MB)</span>
+                                <button type="button" class="admin-btn purge admin-btn-xs" id="btn-bc-clear-media" style="display:none;" onclick="event.stopPropagation(); clearBroadcastMedia();">Remove</button>
+                            </div>
+
+                            <div class="bc-media-url-row">
+                                <input type="text" class="admin-input" id="admin-broadcast-media-url" placeholder="Or paste Telegram post link (t.me/...), Media URL, or file_id..." oninput="updateBroadcastLivePreview()">
+                                <select class="admin-select" id="admin-broadcast-media-type" onchange="updateBroadcastLivePreview()">
+                                    <option value="auto" selected>Auto Type</option>
+                                    <option value="photo">Photo</option>
+                                    <option value="video">Video</option>
+                                    <option value="animation">GIF / Anim</option>
+                                    <option value="audio">Audio</option>
+                                    <option value="document">Document</option>
+                                </select>
+                            </div>
+
+                            <div class="admin-row">
+                                <button type="button" class="admin-btn heal admin-btn-xs" id="btn-broadcast-test" onclick="startAdminBroadcast(true)"><i class="fas fa-vial"></i> Send Test DM</button>
+                                <button type="button" class="admin-btn primary admin-btn-xs" id="btn-broadcast-start" onclick="startAdminBroadcast(false)"><i class="fas fa-rocket"></i> Send Broadcast</button>
+                                <button type="button" class="admin-btn purge admin-btn-xs" id="btn-broadcast-stop" style="display: none;" onclick="triggerAdminAction('broadcast_cancel', true)"><i class="fas fa-stop"></i> Stop</button>
+                            </div>
+                        </div>
+
+                        <!-- Right: Live Telegram Message Preview -->
+                        <div class="bc-preview-col">
+                            <div>
+                                <div class="bc-preview-label">
+                                    <span><i class="fab fa-telegram-plane" style="color:#60a5fa;"></i> Live Telegram Preview</span>
+                                    <span class="mono" id="bc-preview-mode-tag">HTML</span>
+                                </div>
+                                <div class="tg-preview-bubble" style="margin-top:0.45rem;">
+                                    <div class="tg-preview-media" id="tg-preview-media"></div>
+                                    <div class="tg-preview-body" id="tg-preview-body"><span style="color:var(--text-muted); font-style:italic;">Broadcast preview appears here...</span></div>
+                                    <div class="tg-preview-meta mono" id="tg-preview-time">Just now</div>
+                                </div>
+                            </div>
+                            <div style="font-size:0.67rem; color:var(--text-muted);">
+                                Media captions allow up to 1,024 chars; longer messages automatically send text right after the media.
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <main class="dashboard">
+    <main class="dashboard" id="main-dashboard">
 
         <!-- User Plan & Daily Quota Card (Always visible; expands inside Telegram Mini App) -->
         <div class="card card-full" id="user-plan-card">
@@ -1816,6 +2130,9 @@
         let prevHealthyWorkers = null;
         let tmaInitData = '';
         let isAdminAuthenticated = false;
+        let isAdminConsoleOpen = false;
+        let bcSelectedFile = null;
+        let bcSelectedObjectUrl = null;
 
         function getAuthHeaders(extra = {}) {
             const headers = { ...extra };
@@ -1825,9 +2142,28 @@
             return headers;
         }
 
-        function toggleAdminDrawer() {
-            const drawer = document.getElementById('admin-drawer');
-            drawer.classList.toggle('open');
+        function switchAdminView(openConsole) {
+            if (!isAdminAuthenticated && openConsole) return;
+            isAdminConsoleOpen = Boolean(openConsole);
+            const adminPage = document.getElementById('admin-console-page');
+            const mainDash = document.getElementById('main-dashboard');
+            const openBtn = document.getElementById('btn-open-admin-console');
+
+            if (isAdminConsoleOpen) {
+                adminPage.classList.add('active');
+                mainDash.style.display = 'none';
+                openBtn.innerHTML = '<i class="fas fa-chart-line"></i> Telemetry View';
+                openBtn.onclick = () => switchAdminView(false);
+            } else {
+                adminPage.classList.remove('active');
+                mainDash.style.display = 'grid';
+                openBtn.innerHTML = '<i class="fas fa-shield-halved"></i> Admin Console';
+                openBtn.onclick = () => switchAdminView(true);
+                draw7DayHistoryChart();
+                drawSparkline('net-sparkline', netHistory.up, netHistory.dl, '#a855f7', '#10b981');
+                drawSparkline('sys-sparkline', sysHistory.cpu, sysHistory.ram, '#3b82f6', '#10b981', 100);
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // --- Fetch Authenticated User Plan & Daily Quota ---
@@ -1921,12 +2257,16 @@
                 const data = await res.json();
                 if (data.authorized) {
                     isAdminAuthenticated = true;
-                    const wrapper = document.getElementById('admin-bar-wrapper');
-                    wrapper.style.display = 'block';
+                    const openBtn = document.getElementById('btn-open-admin-console');
+                    if (openBtn) openBtn.style.display = 'inline-flex';
                     const realDbPill = document.getElementById('real-db-pill');
                     if (realDbPill) realDbPill.style.display = 'inline-block';
                     const name = data.user?.first_name || 'Admin';
                     document.getElementById('admin-greeting').innerText = `Welcome, ${name}`;
+
+                    if (window.location.pathname === '/admin') {
+                        switchAdminView(true);
+                    }
                 }
             } catch (err) {
                 console.error('TMA auth check failed:', err);
@@ -2049,13 +2389,334 @@
             }
         }
 
-        async function startAdminBroadcast() {
-            const msg = document.getElementById('admin-broadcast-text').value.trim();
-            if (!msg) {
-                showToast('Enter a broadcast message first.', 'fa-exclamation-circle', '#ef4444');
+        function renderAdminConsoleLists(nodes, queueData) {
+            // Workers list inside Admin Console
+            const wList = document.getElementById('admin-worker-list');
+            const wSum = document.getElementById('admin-workers-summary');
+            if (wList && Array.isArray(nodes)) {
+                const healthyCount = nodes.filter(n => n.healthy && !n.disabled).length;
+                if (wSum) wSum.innerText = `${healthyCount} / ${nodes.length} Healthy`;
+
+                if (!nodes.length) {
+                    wList.innerHTML = `<span style="font-size:0.74rem; color:var(--text-muted);">Single-client mode (no external worker nodes).</span>`;
+                } else {
+                    wList.innerHTML = nodes.map(node => {
+                        const isDisabled = Boolean(node.disabled || node.status === 'Disabled');
+                        const isHealthy = Boolean(node.healthy && !isDisabled);
+                        const statusText = isDisabled
+                            ? 'Disabled'
+                            : (!node.healthy
+                                ? (node.cooldown_sec > 0 ? `Cooldown ${formatCooldown(node.cooldown_sec)}` : 'Rate-Limited')
+                                : `${node.status} • ${node.speed || '0 B/s'}`);
+                        return `
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; background:rgba(15,23,42,0.75); border:1px solid var(--border-color); border-radius:8px; padding:0.45rem 0.65rem;">
+                                <div style="min-width:0;">
+                                    <div style="font-size:0.75rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">#${node.id} ${escapeHtml(node.name)}</div>
+                                    <div class="mono" style="font-size:0.67rem; color:${isHealthy ? '#6ee7b7' : '#fca5a5'};">Load: ${node.load} • ${escapeHtml(statusText)}</div>
+                                </div>
+                                <div class="admin-row" style="flex-shrink:0;">
+                                    <button class="admin-btn heal admin-btn-xs" onclick="triggerAdminAction('worker_control', true, {worker_id:'${escapeHtml(node.worker_id)}', op:'heal'})">Heal</button>
+                                    ${isDisabled
+                                        ? `<button class="admin-btn primary admin-btn-xs" onclick="triggerAdminAction('worker_control', true, {worker_id:'${escapeHtml(node.worker_id)}', op:'enable'})">Enable</button>`
+                                        : `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('worker_control', true, {worker_id:'${escapeHtml(node.worker_id)}', op:'disable'})">Disable</button>`
+                                    }
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // Active & Queued tasks inside Admin Console
+            const qList = document.getElementById('admin-queue-list');
+            const qSum = document.getElementById('admin-queue-summary');
+            if (qList && queueData) {
+                const tasks = [
+                    ...(queueData.uploading || []).map(t => ({ ...t, stage: 'Uploading' })),
+                    ...(queueData.downloading || []).map(t => ({ ...t, stage: 'Downloading' })),
+                    ...(queueData.pending || []).map(t => ({ ...t, stage: 'Queued' }))
+                ];
+                if (qSum) qSum.innerText = `${tasks.length} Task${tasks.length === 1 ? '' : 's'}`;
+
+                if (!tasks.length) {
+                    qList.innerHTML = `<span style="font-size:0.74rem; color:var(--text-muted);">No active or queued tasks.</span>`;
+                } else {
+                    qList.innerHTML = tasks.map(t => `
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; background:rgba(15,23,42,0.75); border:1px solid var(--border-color); border-radius:8px; padding:0.45rem 0.65rem;">
+                            <div style="min-width:0;">
+                                <div class="mono" style="font-size:0.73rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(t.filename || '')}">${escapeHtml(t.filename || 'Unknown File')}</div>
+                                <div class="mono" style="font-size:0.66rem; color:var(--text-secondary);">
+                                    ${escapeHtml(t.stage)}${typeof t.percentage === 'number' ? ` (${t.percentage}%)` : ''}${t.user_id ? ` • UID: ${escapeHtml(t.user_id)}` : ''}
+                                </div>
+                            </div>
+                            ${t.task_id ? `<button type="button" class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})">Cancel</button>` : ''}
+                        </div>
+                    `).join('');
+                }
+            }
+        }
+
+        // --- Rich Media & Formatted Broadcast Studio Logic ---
+        function onBroadcastParseModeChange() {
+            const mode = document.getElementById('admin-broadcast-parse-mode').value;
+            document.getElementById('bc-preview-mode-tag').innerText = mode.toUpperCase();
+            document.querySelectorAll('#bc-fmt-toolbar .bc-fmt-btn').forEach(btn => {
+                btn.classList.toggle('disabled', mode === 'plain');
+            });
+            updateBroadcastLivePreview();
+        }
+
+        function applyBroadcastFormat(type) {
+            const mode = document.getElementById('admin-broadcast-parse-mode').value;
+            if (mode === 'plain') return;
+
+            const ta = document.getElementById('admin-broadcast-text');
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            const selected = ta.value.substring(start, end);
+            const sample = selected || (type === 'link' ? 'Click Here' : 'text');
+
+            let replacement = sample;
+            if (mode === 'html') {
+                const map = {
+                    bold: `<b>${sample}</b>`,
+                    italic: `<i>${sample}</i>`,
+                    underline: `<u>${sample}</u>`,
+                    strike: `<s>${sample}</s>`,
+                    spoiler: `<tg-spoiler>${sample}</tg-spoiler>`,
+                    code: `<code>${sample}</code>`,
+                    pre: `<pre>${sample}</pre>`,
+                    quote: `<blockquote>${sample}</blockquote>`,
+                    link: `<a href="https://t.me/OtherBs">${sample}</a>`
+                };
+                replacement = map[type] || sample;
+            } else if (mode === 'markdown') {
+                const map = {
+                    bold: `**${sample}**`,
+                    italic: `__${sample}__`,
+                    underline: `__${sample}__`,
+                    strike: `~~${sample}~~`,
+                    spoiler: `||${sample}||`,
+                    code: `\`${sample}\``,
+                    pre: `\`\`\`\n${sample}\n\`\`\``,
+                    quote: `> ${sample}`,
+                    link: `[${sample}](https://t.me/OtherBs)`
+                };
+                replacement = map[type] || sample;
+            }
+
+            ta.setRangeText(replacement, start, end, 'select');
+            ta.focus();
+            updateBroadcastLivePreview();
+        }
+
+        function handleBroadcastFileSelect(file) {
+            if (!file) return;
+            if (file.size > 28 * 1024 * 1024) {
+                showToast('Media file exceeds 28 MB upload limit.', 'fa-exclamation-circle', '#ef4444');
                 return;
             }
-            await triggerAdminAction('broadcast_start', true, { message: msg });
+            if (bcSelectedObjectUrl) {
+                URL.revokeObjectURL(bcSelectedObjectUrl);
+            }
+            bcSelectedFile = file;
+            bcSelectedObjectUrl = URL.createObjectURL(file);
+
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+            document.getElementById('bc-media-file-label').innerHTML =
+                `<i class="fas fa-check-circle" style="color:#10b981;"></i> <strong>${escapeHtml(file.name)}</strong> <span class="mono">(${sizeMb} MB)</span>`;
+            document.getElementById('btn-bc-clear-media').style.display = 'inline-flex';
+            updateBroadcastLivePreview();
+        }
+
+        function clearBroadcastMedia() {
+            if (bcSelectedObjectUrl) {
+                URL.revokeObjectURL(bcSelectedObjectUrl);
+                bcSelectedObjectUrl = null;
+            }
+            bcSelectedFile = null;
+            document.getElementById('admin-broadcast-file').value = '';
+            document.getElementById('bc-media-file-label').innerHTML =
+                `<i class="fas fa-paperclip" style="color:#60a5fa;"></i> Attach Media (Photo, Video, GIF, Audio, Document up to 28 MB)`;
+            document.getElementById('btn-bc-clear-media').style.display = 'none';
+            updateBroadcastLivePreview();
+        }
+
+        (function setupBroadcastDropzone() {
+            const drop = document.getElementById('bc-media-drop');
+            if (!drop) return;
+            drop.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                drop.classList.add('dragover');
+            });
+            drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+            drop.addEventListener('drop', (e) => {
+                e.preventDefault();
+                drop.classList.remove('dragover');
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleBroadcastFileSelect(e.dataTransfer.files[0]);
+                }
+            });
+        })();
+
+        function renderBroadcastMarkdownPreview(raw) {
+            let s = escapeHtml(raw);
+            s = s.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
+            s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+            s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+            s = s.replace(/__(.+?)__/g, '<i>$1</i>');
+            s = s.replace(/~~(.+?)~~/g, '<s>$1</s>');
+            s = s.replace(/\|\|(.+?)\|\|/g, '<span class="tg-spoiler-span">$1</span>');
+            s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+            s = s.replace(/^&gt;\s?(.*)$/gm, '<blockquote>$1</blockquote>');
+            return s;
+        }
+
+        function sanitizeBroadcastHtmlPreview(raw) {
+            const tpl = document.createElement('template');
+            tpl.innerHTML = raw
+                .replace(/<tg-spoiler>/gi, '<span class="tg-spoiler-span">')
+                .replace(/<\/tg-spoiler>/gi, '</span>');
+            const allowed = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'INS', 'S', 'STRIKE', 'DEL', 'CODE', 'PRE', 'BLOCKQUOTE', 'A', 'SPAN', 'BR']);
+
+            function walk(node) {
+                Array.from(node.childNodes).forEach(child => {
+                    if (child.nodeType === Node.ELEMENT_NODE) {
+                        if (!allowed.has(child.tagName)) {
+                            node.replaceChild(document.createTextNode(child.outerHTML), child);
+                            return;
+                        }
+                        Array.from(child.attributes).forEach(attr => {
+                            const name = attr.name.toLowerCase();
+                            if (child.tagName === 'A' && name === 'href' && /^https?:\/\//i.test(attr.value)) {
+                                child.setAttribute('target', '_blank');
+                                child.setAttribute('rel', 'noopener');
+                            } else if (child.tagName === 'SPAN' && name === 'class' && attr.value === 'tg-spoiler-span') {
+                                // keep spoiler class
+                            } else {
+                                child.removeAttribute(attr.name);
+                            }
+                        });
+                        walk(child);
+                    }
+                });
+            }
+            walk(tpl.content);
+            return tpl.innerHTML;
+        }
+
+        function updateBroadcastLivePreview() {
+            const text = document.getElementById('admin-broadcast-text').value;
+            const mode = document.getElementById('admin-broadcast-parse-mode').value;
+            const mediaUrl = document.getElementById('admin-broadcast-media-url').value.trim();
+            const mediaType = document.getElementById('admin-broadcast-media-type').value;
+            const hasMedia = Boolean(bcSelectedFile || mediaUrl);
+
+            const counter = document.getElementById('bc-char-counter');
+            const limit = hasMedia ? 1024 : 4096;
+            counter.innerText = `${text.length} / ${limit}`;
+            counter.style.color = text.length > limit ? '#f59e0b' : 'var(--text-secondary)';
+
+            const mediaBox = document.getElementById('tg-preview-media');
+            if (!hasMedia) {
+                mediaBox.classList.remove('visible');
+                mediaBox.innerHTML = '';
+            } else {
+                mediaBox.classList.add('visible');
+                if (bcSelectedFile) {
+                    const mime = bcSelectedFile.type || '';
+                    if (mime.startsWith('image/') && bcSelectedObjectUrl) {
+                        mediaBox.innerHTML = `<img src="${bcSelectedObjectUrl}" alt="Preview">`;
+                    } else if (mime.startsWith('video/') && bcSelectedObjectUrl) {
+                        mediaBox.innerHTML = `<video src="${bcSelectedObjectUrl}" controls muted></video>`;
+                    } else {
+                        mediaBox.innerHTML = `<div class="tg-preview-file-badge"><i class="fas fa-file-lines" style="color:#60a5fa; font-size:1.1rem;"></i><span>${escapeHtml(bcSelectedFile.name)} (${escapeHtml(mediaType.toUpperCase())})</span></div>`;
+                    }
+                } else if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(mediaUrl)) {
+                    mediaBox.innerHTML = `<img src="${escapeHtml(mediaUrl)}" alt="Media URL" onerror="this.style.display='none'">`;
+                } else {
+                    mediaBox.innerHTML = `<div class="tg-preview-file-badge"><i class="fas fa-link" style="color:#60a5fa;"></i><span class="mono" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(mediaUrl)}</span></div>`;
+                }
+            }
+
+            const bodyEl = document.getElementById('tg-preview-body');
+            if (!text.trim()) {
+                bodyEl.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">Broadcast preview appears here...</span>`;
+            } else if (mode === 'plain') {
+                bodyEl.textContent = text;
+            } else if (mode === 'markdown') {
+                bodyEl.innerHTML = renderBroadcastMarkdownPreview(text);
+            } else {
+                bodyEl.innerHTML = sanitizeBroadcastHtmlPreview(text);
+            }
+
+            const now = new Date();
+            document.getElementById('tg-preview-time').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function startAdminBroadcast(testOnly = false) {
+            const msg = document.getElementById('admin-broadcast-text').value.trim();
+            const parseMode = document.getElementById('admin-broadcast-parse-mode').value;
+            const mediaUrl = document.getElementById('admin-broadcast-media-url').value.trim();
+            const mediaType = document.getElementById('admin-broadcast-media-type').value;
+            const disablePreview = document.getElementById('admin-broadcast-disable-preview').checked;
+
+            if (!msg && !bcSelectedFile && !mediaUrl) {
+                showToast('Enter a broadcast message or attach media first.', 'fa-exclamation-circle', '#ef4444');
+                return;
+            }
+
+            if (!testOnly) {
+                const confirmText = 'Send this broadcast to all registered users?';
+                const proceed = await new Promise((resolve) => {
+                    const tg = window.Telegram && window.Telegram.WebApp;
+                    if (tg && typeof tg.showConfirm === 'function') {
+                        tg.showConfirm(confirmText, (ok) => resolve(ok));
+                    } else {
+                        resolve(window.confirm(confirmText));
+                    }
+                });
+                if (!proceed) return;
+            }
+
+            const btnStart = document.getElementById('btn-broadcast-start');
+            const btnTest = document.getElementById('btn-broadcast-test');
+            btnStart.disabled = true;
+            btnTest.disabled = true;
+
+            try {
+                const fd = new FormData();
+                fd.append('message', msg);
+                fd.append('parse_mode', parseMode);
+                fd.append('media_type', mediaType);
+                fd.append('media_url', mediaUrl);
+                fd.append('test_only', testOnly ? 'true' : 'false');
+                fd.append('disable_preview', disablePreview ? 'true' : 'false');
+                if (bcSelectedFile) {
+                    fd.append('media', bcSelectedFile, bcSelectedFile.name);
+                }
+
+                const res = await fetch('/api/admin/broadcast', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: fd
+                });
+                const result = await res.json();
+
+                if (res.ok && result.success) {
+                    showToast(result.message || (testOnly ? 'Test DM sent!' : 'Broadcast started!'), 'fa-check-circle', '#10b981');
+                    if (window.Telegram?.WebApp?.HapticFeedback) {
+                        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+                    }
+                } else {
+                    showToast(result.error || 'Broadcast failed.', 'fa-exclamation-circle', '#ef4444');
+                }
+            } catch (err) {
+                showToast('Network error sending broadcast.', 'fa-exclamation-circle', '#ef4444');
+            } finally {
+                btnStart.disabled = false;
+                btnTest.disabled = false;
+            }
         }
 
         // --- Hide Loader ---
@@ -2876,6 +3537,7 @@
                     const pBox = document.getElementById('broadcast-progress-box');
                     const stopBtn = document.getElementById('btn-broadcast-stop');
                     const startBtn = document.getElementById('btn-broadcast-start');
+                    const testBtn = document.getElementById('btn-broadcast-test');
                     if (b.running || b.total > 0) {
                         pBox.style.display = 'block';
                         const done = (b.sent || 0) + (b.failed || 0);
@@ -2885,7 +3547,10 @@
                     }
                     stopBtn.style.display = b.running ? 'inline-flex' : 'none';
                     startBtn.disabled = Boolean(b.running);
+                    if (testBtn) testBtn.disabled = Boolean(b.running);
                 }
+
+                renderAdminConsoleLists(data.worker_nodes || [], latestQueueData);
             }
 
             // Hardware meters
@@ -2959,7 +3624,11 @@
                         fetch('/api/analytics/24h', { headers })
                     ]);
                     if (sRes.ok) applyStatusUpdate(await sRes.json());
-                    if (qRes.ok) renderTelemetry(await qRes.json());
+                    if (qRes.ok) {
+                        const qData = await qRes.json();
+                        renderTelemetry(qData);
+                        if (isAdminAuthenticated) renderAdminConsoleLists(null, qData);
+                    }
                     if (a7Res.ok) applyAnalytics7dUpdate(await a7Res.json());
                     if (a24Res.ok) applyAnalytics24hUpdate(await a24Res.json());
                 } catch (err) {
@@ -3001,7 +3670,10 @@
                 try {
                     const payload = JSON.parse(event.data);
                     if (payload.status) applyStatusUpdate(payload.status);
-                    if (payload.queue) renderTelemetry(payload.queue);
+                    if (payload.queue) {
+                        renderTelemetry(payload.queue);
+                        if (isAdminAuthenticated) renderAdminConsoleLists(payload.status?.worker_nodes || null, payload.queue);
+                    }
                     if (payload.analytics_7d) applyAnalytics7dUpdate(payload.analytics_7d);
                     if (payload.analytics_24h) applyAnalytics24hUpdate(payload.analytics_24h);
                 } catch (err) {
@@ -3028,6 +3700,7 @@
 
         (async function bootstrapDashboard() {
             await initTelegramMiniApp();
+            updateBroadcastLivePreview();
             fetchInitial7dAnalytics();
             connectTelemetryStream();
         })();
