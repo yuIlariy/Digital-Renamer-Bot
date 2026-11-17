@@ -415,6 +415,7 @@
             flex-direction: column;
             justify-content: space-between;
             transition: border-color 0.25s ease, transform 0.25s ease;
+            min-width: 0;
         }
 
         .card:hover {
@@ -426,21 +427,6 @@
         .card-full { grid-column: span 12; }
         .card-system { grid-column: span 6; }
         .card-network { grid-column: span 6; }
-
-        /* --- User Personal Quota Card --- */
-        .card-user-plan {
-            grid-column: span 12;
-            border-color: rgba(59, 130, 246, 0.3);
-            background: linear-gradient(135deg, rgba(15, 23, 42, 0.84), rgba(30, 41, 59, 0.68));
-            display: none;
-        }
-
-        .plan-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 0.85rem;
-            margin-bottom: 1rem;
-        }
 
         .card-header {
             display: flex;
@@ -486,26 +472,64 @@
             border-color: rgba(245, 158, 11, 0.35);
         }
 
-        .plan-pill {
-            background: rgba(59, 130, 246, 0.15);
-            color: #93c5fd;
-            border: 1px solid rgba(59, 130, 246, 0.32);
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
+        .real-db-pill {
+            display: none;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.18rem 0.5rem;
+            border-radius: 6px;
+            background: rgba(245, 158, 11, 0.16);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            color: #fcd34d;
+            letter-spacing: 0.05em;
+        }
+
+        /* --- User Plan & Daily Quota Card --- */
+        .quota-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 0.9rem;
+        }
+
+        .quota-bar-wrap {
+            margin-top: 0.95rem;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.75rem 0.95rem;
+        }
+
+        .quota-bar-meta {
+            display: flex;
+            justify-content: space-between;
             font-size: 0.74rem;
-            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.45rem;
+        }
+
+        .quota-guest-note {
+            background: var(--bg-surface);
+            border: 1px dashed rgba(148, 163, 184, 0.24);
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            line-height: 1.45;
         }
 
         /* --- Stat Blocks --- */
         .stat-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 0.9rem;
         }
 
         .stat-grid-2 {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 0.9rem;
         }
 
@@ -518,6 +542,7 @@
             flex-direction: column;
             justify-content: center;
             min-width: 0;
+            overflow: hidden;
         }
 
         .stat-label {
@@ -527,7 +552,12 @@
             display: flex;
             align-items: center;
             gap: 0.4rem;
-            white-space: nowrap;
+            line-height: 1.25;
+            min-width: 0;
+        }
+
+        .stat-label i {
+            flex-shrink: 0;
         }
 
         .stat-value {
@@ -600,7 +630,7 @@
 
         .speed-top-bar {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 0.9rem;
         }
 
@@ -965,15 +995,30 @@
             flex-shrink: 0;
         }
 
-        .q-you-pill {
-            font-size: 0.64rem;
+        .q-owner-pill {
+            font-size: 0.63rem;
             font-weight: 700;
-            color: #e9d5ff;
-            background: rgba(168, 85, 247, 0.22);
-            border: 1px solid rgba(168, 85, 247, 0.38);
-            padding: 0.16rem 0.48rem;
+            color: #6ee7b7;
+            background: rgba(16, 185, 129, 0.14);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            padding: 0.14rem 0.45rem;
             border-radius: 5px;
             flex-shrink: 0;
+        }
+
+        .q-cancel-btn {
+            font-size: 0.66rem;
+            font-weight: 600;
+            color: #fca5a5;
+            background: rgba(239, 68, 68, 0.14);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            padding: 0.18rem 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .q-cancel-btn:hover {
+            background: rgba(239, 68, 68, 0.28);
         }
 
         .q-filename {
@@ -1053,7 +1098,7 @@
         /* --- Fleet Architecture & Per-Node Cards --- */
         .fleet-summary-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 0.9rem;
             margin-bottom: 1.15rem;
         }
@@ -1295,7 +1340,7 @@
 
         /* --- Responsive --- */
         @media (max-width: 960px) {
-            .card-bot, .card-users, .card-system, .card-network, .card-full, .card-user-plan {
+            .card-bot, .card-users, .card-system, .card-network, .card-full {
                 grid-column: span 12;
             }
             .traffic-layout {
@@ -1304,8 +1349,8 @@
             .admin-drawer.open {
                 grid-template-columns: 1fr;
             }
-            .plan-stats-grid {
-                grid-template-columns: repeat(2, 1fr);
+            .quota-grid {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
             }
         }
 
@@ -1317,8 +1362,19 @@
             .stat-grid, .speed-top-bar {
                 grid-template-columns: 1fr;
             }
-            .fleet-summary-grid {
-                grid-template-columns: repeat(2, 1fr);
+            .fleet-summary-grid, .quota-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.65rem;
+            }
+            .quota-grid .stat-block {
+                padding: 0.85rem 0.85rem;
+            }
+            .quota-grid .stat-label {
+                font-size: 0.69rem;
+                gap: 0.32rem;
+            }
+            .quota-grid .stat-value {
+                font-size: clamp(0.95rem, 3.6vw, 1.3rem);
             }
             .actions {
                 flex-direction: column;
@@ -1436,41 +1492,52 @@
 
     <main class="dashboard">
 
-        <!-- Authenticated Telegram User Plan & Daily Quota Card -->
-        <div class="card card-user-plan" id="user-plan-card">
+        <!-- User Plan & Daily Quota Card (Always visible; expands inside Telegram Mini App) -->
+        <div class="card card-full" id="user-plan-card">
             <div class="card-header">
-                <span class="card-title"><i class="fas fa-id-badge"></i> My Plan & Daily Quota <span id="user-plan-greeting" style="color: var(--text-primary); text-transform: none; letter-spacing: 0;"></span></span>
-                <span class="plan-pill mono" id="user-plan-badge">Free Plan</span>
-            </div>
-            <div class="plan-stats-grid">
-                <div class="stat-block">
-                    <div class="stat-label"><i class="fas fa-chart-pie" style="color: var(--accent-blue);"></i> Daily Used</div>
-                    <div class="stat-value mono" id="user-plan-used">0 B</div>
-                </div>
-                <div class="stat-block">
-                    <div class="stat-label"><i class="fas fa-battery-three-quarters" style="color: var(--success);"></i> Remaining</div>
-                    <div class="stat-value mono" id="user-plan-remaining">0 B</div>
-                </div>
-                <div class="stat-block">
-                    <div class="stat-label"><i class="fas fa-gauge-high" style="color: var(--accent-purple);"></i> Daily Limit</div>
-                    <div class="stat-value mono" id="user-plan-limit">0 B</div>
-                </div>
-                <div class="stat-block">
-                    <div class="stat-label"><i class="fas fa-file-arrow-up" style="color: var(--warning);"></i> Max File Size</div>
-                    <div class="stat-value mono" id="user-plan-maxfile">2 GB</div>
-                </div>
-                <div class="stat-block">
-                    <div class="stat-label"><i class="fas fa-clock-rotate-left" style="color: #60a5fa;"></i> Reset / Status</div>
-                    <div class="stat-value mono" id="user-plan-reset">—</div>
+                <span class="card-title"><i class="fas fa-id-card"></i> Your Plan & Daily Quota<span id="val-plan-user-suffix" style="color: var(--text-primary); text-transform: none; letter-spacing: normal;"></span></span>
+                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                    <span class="mono" id="val-plan-expiry" style="font-size:0.74rem; color:var(--text-secondary);"></span>
+                    <div class="status-badge" id="val-plan-badge" style="display:none;">
+                        <span id="val-plan-name">Free Plan</span>
+                    </div>
                 </div>
             </div>
-            <div class="meter" style="margin-bottom: 0;">
-                <div class="meter-header">
-                    <span>Daily Quota Utilization</span>
-                    <span class="meter-value mono" id="user-plan-pct">0%</span>
+            <div class="quota-guest-note" id="plan-guest-note">
+                <i class="fas fa-circle-info" style="color:#60a5fa; flex-shrink:0;"></i>
+                <span>Open this dashboard inside the Telegram Mini App to view your personal daily upload usage, remaining quota, and unmasked active files.</span>
+            </div>
+            <div id="plan-details-wrap" style="display:none;">
+                <div class="quota-grid">
+                    <div class="stat-block">
+                        <div class="stat-label"><i class="fas fa-cloud-arrow-up" style="color: var(--accent-blue);"></i> Used Today</div>
+                        <div class="stat-value mono" id="val-plan-used">0 B</div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label"><i class="fas fa-battery-three-quarters" style="color: var(--success);"></i> Remaining Today</div>
+                        <div class="stat-value mono" id="val-plan-remaining" style="color: var(--success);">--</div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label"><i class="fas fa-gauge-high" style="color: var(--accent-purple);"></i> Daily Limit</div>
+                        <div class="stat-value mono" id="val-plan-limit">--</div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label"><i class="fas fa-file-arrow-up" style="color: var(--warning);"></i> Max File Size</div>
+                        <div class="stat-value mono" id="val-plan-maxfile">--</div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="stat-label"><i class="fas fa-clock-rotate-left" style="color: #38bdf8;"></i> Reset / Status</div>
+                        <div class="stat-value mono" id="val-plan-reset" style="color: #7dd3fc;">--</div>
+                    </div>
                 </div>
-                <div class="progress-track">
-                    <div class="progress-fill fill-cpu" id="user-plan-bar" style="width: 0%;"></div>
+                <div class="quota-bar-wrap" id="plan-bar-wrap">
+                    <div class="quota-bar-meta mono">
+                        <span>Daily Quota Utilization</span>
+                        <span id="val-plan-pct">0%</span>
+                    </div>
+                    <div class="progress-track">
+                        <div class="progress-fill fill-ram" id="bar-plan-usage" style="width: 0%;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1504,6 +1571,7 @@
         <div class="card card-users">
             <div class="card-header">
                 <span class="card-title"><i class="fas fa-users"></i> Audience Metrics</span>
+                <span class="real-db-pill mono" id="real-db-pill">REAL DB</span>
             </div>
             <div class="stat-grid-2">
                 <div class="stat-block">
@@ -1762,6 +1830,69 @@
             drawer.classList.toggle('open');
         }
 
+        // --- Fetch Authenticated User Plan & Daily Quota ---
+        async function fetchUserPlan() {
+            if (!tmaInitData) return;
+            try {
+                const res = await fetch('/api/user/plan', {
+                    headers: getAuthHeaders()
+                });
+                if (!res.ok) return;
+                const plan = await res.json();
+                if (!plan.authenticated) return;
+
+                document.getElementById('plan-guest-note').style.display = 'none';
+                document.getElementById('plan-details-wrap').style.display = 'block';
+
+                const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+                const displayName = plan.first_name || tgUser?.first_name;
+                const userSuffix = document.getElementById('val-plan-user-suffix');
+                if (userSuffix && displayName) {
+                    userSuffix.innerText = ` — ${displayName}`;
+                }
+
+                const badge = document.getElementById('val-plan-badge');
+                badge.style.display = 'inline-flex';
+                document.getElementById('val-plan-name').innerText = plan.plan_name || 'Free Plan';
+                if (plan.is_premium) {
+                    badge.style.background = 'rgba(168, 85, 247, 0.16)';
+                    badge.style.borderColor = 'rgba(168, 85, 247, 0.38)';
+                    badge.style.color = '#e9d5ff';
+                }
+
+                const expiryEl = document.getElementById('val-plan-expiry');
+                if (expiryEl && plan.expiry_formatted) {
+                    expiryEl.innerText = plan.is_premium
+                        ? `Expires: ${plan.expiry_formatted}`
+                        : plan.expiry_formatted;
+                }
+
+                document.getElementById('val-plan-used').innerText = plan.daily_used_human || '0 B';
+                document.getElementById('val-plan-remaining').innerText = plan.remaining_human || '--';
+                document.getElementById('val-plan-limit').innerText = plan.daily_limit_human || '--';
+                document.getElementById('val-plan-maxfile').innerText = plan.max_file_size_human || '2 GB';
+
+                const resetEl = document.getElementById('val-plan-reset');
+                const resetText = plan.remaining_time || '--';
+                resetEl.innerText = resetText;
+                resetEl.title = resetText;
+
+                const barWrap = document.getElementById('plan-bar-wrap');
+                if (plan.is_premium) {
+                    barWrap.style.display = 'none';
+                } else {
+                    barWrap.style.display = 'block';
+                    const pct = Math.min(100, Number(plan.usage_pct || 0));
+                    document.getElementById('val-plan-pct').innerText = `${pct}%`;
+                    const bar = document.getElementById('bar-plan-usage');
+                    bar.style.width = `${pct}%`;
+                    applyMeterColor(bar, pct, 'fill-ram');
+                }
+            } catch (err) {
+                console.error('User plan fetch failed:', err);
+            }
+        }
+
         // --- Initialize Telegram Mini App Auth & User Plan ---
         async function initTelegramMiniApp() {
             const tg = window.Telegram && window.Telegram.WebApp;
@@ -1773,45 +1904,10 @@
             if (!tg.initData) return;
             tmaInitData = tg.initData;
 
-            await Promise.all([
-                verifyAdminSession(),
-                loadUserPlanCard()
-            ]);
-        }
+            fetchUserPlan();
+            setInterval(fetchUserPlan, 15000);
 
-        async function loadUserPlanCard() {
-            if (!tmaInitData) return;
-            try {
-                const res = await fetch('/api/user/plan', {
-                    headers: getAuthHeaders()
-                });
-                if (!res.ok) return;
-                const data = await res.json();
-                if (!data.authenticated) return;
-
-                const card = document.getElementById('user-plan-card');
-                card.style.display = 'flex';
-
-                const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-                if (tgUser && tgUser.first_name) {
-                    document.getElementById('user-plan-greeting').innerText = `— ${tgUser.first_name}`;
-                }
-
-                document.getElementById('user-plan-badge').innerText = data.plan_name || 'Free Plan';
-                document.getElementById('user-plan-used').innerText = data.daily_used_human || '0 B';
-                document.getElementById('user-plan-remaining').innerText = data.remaining_human || '0 B';
-                document.getElementById('user-plan-limit').innerText = data.daily_limit_human || '0 B';
-                document.getElementById('user-plan-maxfile').innerText = data.max_file_size_human || '2 GB';
-                document.getElementById('user-plan-reset').innerText = data.remaining_time || '—';
-
-                const pct = Number(data.usage_pct || 0);
-                document.getElementById('user-plan-pct').innerText = `${pct}%`;
-                const bar = document.getElementById('user-plan-bar');
-                bar.style.width = `${Math.min(100, pct)}%`;
-                applyMeterColor(bar, pct, 'fill-cpu');
-            } catch (err) {
-                console.error('User plan fetch failed:', err);
-            }
+            await verifyAdminSession();
         }
 
         async function verifyAdminSession() {
@@ -1827,6 +1923,8 @@
                     isAdminAuthenticated = true;
                     const wrapper = document.getElementById('admin-bar-wrapper');
                     wrapper.style.display = 'block';
+                    const realDbPill = document.getElementById('real-db-pill');
+                    if (realDbPill) realDbPill.style.display = 'inline-block';
                     const name = data.user?.first_name || 'Admin';
                     document.getElementById('admin-greeting').innerText = `Welcome, ${name}`;
                 }
@@ -2562,7 +2660,7 @@
             }).join('');
         }
 
-        // --- Render Telemetry Terminal ---
+        // --- Render Telemetry Terminal (with Privacy Masking, Owner Pill & Admin Controls) ---
         function renderTelemetry(data) {
             latestQueueData = data;
             const term = document.getElementById('queue-terminal');
@@ -2579,30 +2677,42 @@
 
             let itemsHtml = '';
 
+            function buildExtras(t) {
+                const ownerBadge = t.is_owner ? `<span class="q-owner-pill mono">YOUR FILE</span>` : '';
+                const adminUidBadge = (isAdminAuthenticated && t.user_id)
+                    ? `<span class="q-worker-pill mono">UID: ${escapeHtml(t.user_id)}</span>`
+                    : '';
+                const cancelBtn = (isAdminAuthenticated && t.task_id)
+                    ? `<button type="button" class="q-cancel-btn mono" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})"><i class="fas fa-xmark"></i> Cancel</button>`
+                    : '';
+                const lockPrefix = t.is_masked
+                    ? `<i class="fas fa-lock" style="color:var(--text-muted); margin-right:0.35rem; font-size:0.75rem;" title="Filename masked for privacy"></i>`
+                    : '';
+                return { ownerBadge, adminUidBadge, cancelBtn, lockPrefix };
+            }
+
             if (activeFilter === 'all' || activeFilter === 'uploading') {
                 upList.forEach(t => {
                     const extBadge = formatExtBadge(t);
                     const workerBadge = t.worker_name ? `<span class="q-worker-pill mono">${escapeHtml(t.worker_name)}</span>` : '';
-                    const ownerBadge = t.is_owner ? `<span class="q-you-pill mono">YOU</span>` : (t.is_masked ? `<span class="q-ext-pill mono"><i class="fas fa-lock"></i></span>` : '');
-                    const cancelBtn = (isAdminAuthenticated && t.task_id)
-                        ? `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})"><i class="fas fa-xmark"></i></button>`
-                        : '';
                     const fname = t.filename || 'Unknown File';
+                    const { ownerBadge, adminUidBadge, cancelBtn, lockPrefix } = buildExtras(t);
                     itemsHtml += `
                         <div class="q-item">
                             <div class="q-top">
                                 <div class="q-badges">
                                     <span class="q-tag up"><i class="fas fa-arrow-up"></i> Uploading</span>
-                                    ${ownerBadge}
                                     ${extBadge}
                                     ${workerBadge}
+                                    ${ownerBadge}
+                                    ${adminUidBadge}
                                 </div>
                                 <div style="display:flex; align-items:center; gap:0.5rem;">
                                     <span class="q-pct mono">${t.percentage}%</span>
                                     ${cancelBtn}
                                 </div>
                             </div>
-                            <div class="q-filename mono" title="${escapeHtml(fname)}">${escapeHtml(fname)}</div>
+                            <div class="q-filename mono" title="${escapeHtml(fname)}">${lockPrefix}${escapeHtml(fname)}</div>
                             <div class="q-bar-bg"><div class="q-bar-fill up" style="width: ${t.percentage}%;"></div></div>
                             <div class="q-stats mono">
                                 <span>${escapeHtml(t.current)} / ${escapeHtml(t.total)}</span>
@@ -2616,26 +2726,24 @@
                 dlList.forEach(t => {
                     const extBadge = formatExtBadge(t);
                     const workerBadge = t.worker_name ? `<span class="q-worker-pill mono">${escapeHtml(t.worker_name)}</span>` : '';
-                    const ownerBadge = t.is_owner ? `<span class="q-you-pill mono">YOU</span>` : (t.is_masked ? `<span class="q-ext-pill mono"><i class="fas fa-lock"></i></span>` : '');
-                    const cancelBtn = (isAdminAuthenticated && t.task_id)
-                        ? `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})"><i class="fas fa-xmark"></i></button>`
-                        : '';
                     const fname = t.filename || 'Unknown File';
+                    const { ownerBadge, adminUidBadge, cancelBtn, lockPrefix } = buildExtras(t);
                     itemsHtml += `
                         <div class="q-item">
                             <div class="q-top">
                                 <div class="q-badges">
                                     <span class="q-tag dl"><i class="fas fa-arrow-down"></i> Downloading</span>
-                                    ${ownerBadge}
                                     ${extBadge}
                                     ${workerBadge}
+                                    ${ownerBadge}
+                                    ${adminUidBadge}
                                 </div>
                                 <div style="display:flex; align-items:center; gap:0.5rem;">
                                     <span class="q-pct mono">${t.percentage}%</span>
                                     ${cancelBtn}
                                 </div>
                             </div>
-                            <div class="q-filename mono" title="${escapeHtml(fname)}">${escapeHtml(fname)}</div>
+                            <div class="q-filename mono" title="${escapeHtml(fname)}">${lockPrefix}${escapeHtml(fname)}</div>
                             <div class="q-bar-bg"><div class="q-bar-fill" style="width: ${t.percentage}%;"></div></div>
                             <div class="q-stats mono">
                                 <span>${escapeHtml(t.current)} / ${escapeHtml(t.total)}</span>
@@ -2648,25 +2756,23 @@
             if (activeFilter === 'all' || activeFilter === 'pending') {
                 waitList.forEach(t => {
                     const extBadge = formatExtBadge(t);
-                    const ownerBadge = t.is_owner ? `<span class="q-you-pill mono">YOU</span>` : '';
-                    const cancelBtn = (isAdminAuthenticated && t.task_id)
-                        ? `<button class="admin-btn purge admin-btn-xs" onclick="triggerAdminAction('cancel_task', false, {task_id:'${escapeHtml(t.task_id)}'})"><i class="fas fa-xmark"></i></button>`
-                        : '';
                     const fname = t.filename || 'Unknown File';
+                    const { ownerBadge, adminUidBadge, cancelBtn, lockPrefix } = buildExtras(t);
                     itemsHtml += `
                         <div class="q-item" style="opacity: 0.84;">
                             <div class="q-top">
                                 <div class="q-badges">
                                     <span class="q-tag wait"><i class="fas fa-clock"></i> Queued</span>
-                                    ${ownerBadge}
                                     ${extBadge}
+                                    ${ownerBadge}
+                                    ${adminUidBadge}
                                 </div>
                                 <div style="display:flex; align-items:center; gap:0.5rem;">
                                     <span class="q-pct mono" style="color: var(--text-muted); font-size: 0.78rem;">${escapeHtml(t.size || 'Waiting')}</span>
                                     ${cancelBtn}
                                 </div>
                             </div>
-                            <div class="q-filename mono" style="color: var(--text-secondary);" title="${escapeHtml(fname)}">${escapeHtml(fname)}</div>
+                            <div class="q-filename mono" style="color: var(--text-secondary);" title="${escapeHtml(fname)}">${lockPrefix}${escapeHtml(fname)}</div>
                         </div>`;
                 });
             }
