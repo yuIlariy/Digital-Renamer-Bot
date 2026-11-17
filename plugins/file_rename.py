@@ -63,9 +63,22 @@ upload_lock = asyncio.Lock()
 # ==========================================
 active_tasks = {}
 active_progress = {}
-queue_paused = False  # Controlled via Telegram Mini App Admin Console
+queue_paused = False  # Controlled via Telegram Mini App Admin Console & persisted in MongoDB
 maintenance_message = ""  # Optional custom notice shown when queue_paused is True
 main_bot_client = None  # Cached main bot Client reference for web broadcasts
+_maintenance_loaded = False
+
+
+async def load_persisted_maintenance_state():
+    """Loads persisted queue_paused and maintenance_message from MongoDB."""
+    global queue_paused, maintenance_message, _maintenance_loaded
+    try:
+        state = await digital_botz.get_maintenance_state()
+        queue_paused = bool(state.get("queue_paused", False))
+        maintenance_message = str(state.get("maintenance_message", "") or "")
+        _maintenance_loaded = True
+    except Exception as e:
+        print(f"Warning: Failed to load persisted maintenance state: {e}")
 
 
 def _get_admin_ids():
@@ -211,6 +224,7 @@ def get_least_busy_worker(main_client):
 async def resume_all_tasks(client):
     global main_bot_client
     main_bot_client = client
+    await load_persisted_maintenance_state()
     print("🔄 Checking for incomplete tasks to resume...")
     try:
         shutil.rmtree("Renames", ignore_errors=True)
@@ -276,6 +290,8 @@ async def resume_all_tasks(client):
 async def rename_start(client, message):
     global main_bot_client
     main_bot_client = client
+    if not _maintenance_loaded:
+        await load_persisted_maintenance_state()
     user_id = message.from_user.id
 
     if queue_paused and user_id not in _get_admin_ids():
@@ -405,6 +421,8 @@ async def refunc(client, message):
 async def doc(client, update):
     global main_bot_client
     main_bot_client = client
+    if not _maintenance_loaded:
+        await load_persisted_maintenance_state()
     user_id = int(update.message.chat.id)
     if queue_paused and user_id not in _get_admin_ids():
         try:

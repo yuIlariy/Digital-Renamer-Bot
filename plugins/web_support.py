@@ -10,11 +10,14 @@ Apache License 2.0
 Copyright (c) 2022 @Digital_Botz
 """
 
+import aiohttp
 from aiohttp import web
 import time
 import psutil
 import shutil
 import os
+import re
+import uuid
 import json
 import hmac
 import hashlib
@@ -29,15 +32,28 @@ from helper.database import digital_botz
 from wzgram.types import Message
 
 try:
+    from wzgram.enums import ParseMode
+except ImportError:
+    ParseMode = None
+
+try:
     from wzgram.errors import FloodWait, InputUserDeactivated, UserIsBlocked, PeerIdInvalid
 except ImportError:
     from wzgram.errors import FloodWait
     InputUserDeactivated = UserIsBlocked = PeerIdInvalid = Exception
 
-# Ensure templates directory exists
+# Ensure templates & temp broadcast directories exist
 os.makedirs('templates', exist_ok=True)
+os.makedirs('BroadcastTemp', exist_ok=True)
 
 DigitalRenameBot = web.RouteTableDef()
+
+TG_POST_LINK_RE = re.compile(
+    r"^https?://(?:t\.me|telegram\.me|telegram\.dog)/(?:s/)?(?:c/(\d+)|([A-Za-z0-9_]{3,}))/(?:\d+/)?(\d+)(?:\?.*)?$",
+    re.IGNORECASE,
+)
+
+MAX_BROADCAST_UPLOAD_BYTES = 28 * 1024 * 1024  # 28 MB
 
 # --- NETWORK SPEED TRACKER GLOBALS ---
 last_net_io = psutil.net_io_counters()
@@ -85,6 +101,8 @@ _broadcast_state = {
     "sent": 0,
     "failed": 0,
     "total": 0,
+    "has_media": False,
+    "parse_mode": "html",
     "task": None
 }
 
@@ -715,6 +733,8 @@ async def get_status(pending_count=0, is_admin=False):
 
     try:
         from plugins import file_rename
+        if not getattr(file_rename, "_maintenance_loaded", False) and hasattr(file_rename, "load_persisted_maintenance_state"):
+            await file_rename.load_persisted_maintenance_state()
         worker_loads = getattr(file_rename, "worker_loads", {})
         active_tasks = getattr(file_rename, "active_tasks", {})
         active_progress = getattr(file_rename, "active_progress", {})
@@ -882,7 +902,9 @@ async def get_status(pending_count=0, is_admin=False):
             "running": _broadcast_state["running"],
             "sent": _broadcast_state["sent"],
             "failed": _broadcast_state["failed"],
-            "total": _broadcast_state["total"]
+            "total": _broadcast_state["total"],
+            "has_media": _broadcast_state.get("has_media", False),
+            "parse_mode": _broadcast_state.get("parse_mode", "html")
         }
 
     return payload
@@ -994,18 +1016,382 @@ async def get_queue_data(viewer_user_id=None, is_admin=False):
         return {"success": False, "error": str(e), "downloading": [], "uploading": [], "pending": []}
 
 
-async def _run_web_broadcast(text_msg: str):
+# ==========================================
+# --- FORMATTED & MEDIA BROADCAST HELPERS ---
+# ==========================================
+def _resolve_parse_mode(mode_str: str):
+    if ParseMode is None:
+        return None
+    m = (mode_str or "html").strip().lower()
+    if m == "html":
+        return ParseMode.HTML
+    if m in ("markdown", "md"):
+        return ParseMode.MARKDOWN
+    if m in ("plain", "none", "disabled", "text"):
+        return ParseMode.DISABLED
+    return ParseMode.HTML
+
+
+def _detect_media_kind(media_type: str, filename: str = "", media_url: str = "", content_type: str = "") -> str:
+    mt = (media_type or "auto").strip().lower()
+    if mt in ("photo", "video", "animation", "audio", "document"):
+        return mt
+    ct = (content_type or "").lower()
+    if "gif" in ct:
+        return "animation"
+    if ct.startswith("image/"):
+        return "photo"
+    if ct.startswith("video/"):
+        return "video"
+    if ct.startswith("audio/"):
+        return "audio"
+
+    probe = (filename or media_url or "").split("?")[0].lower()
+    ext = probe.rsplit(".", 1)[-1] if "." in probe else ""
+    if ext in ("jpg", "jpeg", "png", "webp"):
+        return "photo"
+    if ext == "gif":
+        return "animation"
+    if ext in ("mp4", "mkv", "mov", "webm", "avi", "m4v"):
+        return "video"
+    if ext in ("mp3", "m4a", "ogg", "oga", "wav", "flac", "aac", "opus"):
+        return "audio"
+    if filename:
+        return "document"
+    return "photo"
+
+
+def _extract_msg_media_info(msg):
+    """Extracts (media_kind, file_id) from any Pyrogram/wzgram Message containing media."""
+    if not msg:
+        return None, None
+    if getattr(msg, "photo", None):
+        return "photo", msg.photo.file_id
+    if getattr(msg, "video", None):
+        return "video", msg.video.file_id
+    if getattr(msg, "animation", None):
+        return "animation", msg.animation.file_id
+    if getattr(msg, "audio", None):
+        return "audio", msg.audio.file_id
+    if getattr(msg, "document", None):
+        return "document", msg.document.file_id
+    if getattr(msg, "voice", None):
+        return "voice", msg.voice.file_id
+    if getattr(msg, "sticker", None):
+        return "sticker", msg.sticker.file_id
+    return None, None
+
+
+def _extract_cached_file_id(sent_msg, media_kind: str):
+    if not sent_msg:
+        return None
+    if media_kind == "photo" and getattr(sent_msg, "photo", None):
+        return sent_msg.photo.file_id
+    if media_kind == "video" and getattr(sent_msg, "video", None):
+        return sent_msg.video.file_id
+    if media_kind == "animation" and getattr(sent_msg, "animation", None):
+        return sent_msg.animation.file_id
+    if media_kind == "audio" and getattr(sent_msg, "audio", None):
+        return sent_msg.audio.file_id
+    if getattr(sent_msg, "document", None):
+        return sent_msg.document.file_id
+    _, fid = _extract_msg_media_info(sent_msg)
+    return fid
+
+
+async def _download_remote_media_to_temp(url: str):
+    """Downloads an external HTTP(S) media URL into BroadcastTemp/ when Telegram cannot scrape it directly."""
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; DigitalRenameBot/2.0)"}
+    timeout = aiohttp.ClientTimeout(total=45)
+    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        async with session.get(url, allow_redirects=True) as resp:
+            if resp.status >= 400:
+                raise ValueError(f"Remote media URL returned HTTP {resp.status}")
+
+            ct = (resp.headers.get("Content-Type") or "").lower()
+            if "text/html" in ct:
+                raise ValueError("URL points to an HTML webpage instead of a direct media file.")
+
+            url_path = url.split("?")[0]
+            ext = os.path.splitext(url_path)[1]
+            if not ext:
+                if "jpeg" in ct or "jpg" in ct:
+                    ext = ".jpg"
+                elif "png" in ct:
+                    ext = ".png"
+                elif "webp" in ct:
+                    ext = ".webp"
+                elif "gif" in ct:
+                    ext = ".gif"
+                elif "mp4" in ct or "video/" in ct:
+                    ext = ".mp4"
+                elif "mpeg" in ct or "mp3" in ct or "audio/" in ct:
+                    ext = ".mp3"
+                else:
+                    ext = ".bin"
+
+            os.makedirs("BroadcastTemp", exist_ok=True)
+            temp_path = os.path.join("BroadcastTemp", f"url_{uuid.uuid4().hex}{ext}")
+            written = 0
+            try:
+                with open(temp_path, "wb") as f:
+                    async for chunk in resp.content.iter_chunked(65536):
+                        written += len(chunk)
+                        if written > MAX_BROADCAST_UPLOAD_BYTES:
+                            raise ValueError("Remote media exceeds 28 MB limit.")
+                        f.write(chunk)
+            except Exception:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+                raise
+
+            if written == 0:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+                raise ValueError("Remote media URL returned an empty file.")
+
+            return temp_path, ct
+
+
+async def _prepare_broadcast_media(
+    bot_client,
+    media_path: str = None,
+    media_url: str = "",
+    media_type: str = "auto",
+    media_name: str = ""
+) -> dict:
+    """
+    Normalizes uploaded files, Telegram post links (https://t.me/.../123),
+    direct HTTP(S) URLs, or Telegram file_ids into a unified media descriptor.
+    """
+    spec = {
+        "source": None,
+        "kind": "photo",
+        "copy_ref": None,
+        "temp_files": []
+    }
+
+    if media_path and os.path.exists(media_path):
+        spec["source"] = media_path
+        spec["kind"] = _detect_media_kind(media_type, filename=media_name or media_path)
+        spec["temp_files"].append(media_path)
+        return spec
+
+    clean_url = (media_url or "").strip()
+    if not clean_url:
+        return spec
+
+    # Handle Telegram post links like https://t.me/ChannelName/228 or https://t.me/c/123456789/228
+    tg_match = TG_POST_LINK_RE.match(clean_url)
+    if tg_match:
+        private_cid, public_uname, msg_id_str = tg_match.groups()
+        src_chat = int(f"-100{private_cid}") if private_cid else public_uname
+        src_msg_id = int(msg_id_str)
+        spec["copy_ref"] = (src_chat, src_msg_id)
+
+        try:
+            src_msg = await bot_client.get_messages(src_chat, src_msg_id)
+            if not src_msg or getattr(src_msg, "empty", False):
+                raise ValueError("Telegram post not found or bot lacks access to that channel.")
+
+            detected_kind, file_id = _extract_msg_media_info(src_msg)
+            if not file_id:
+                raise ValueError("The linked Telegram post does not contain any media.")
+
+            spec["source"] = file_id
+            spec["kind"] = detected_kind if media_type == "auto" else _detect_media_kind(media_type)
+        except ValueError:
+            raise
+        except Exception:
+            # Even if get_messages cannot read file_id directly, copy_message can still copy public posts
+            spec["source"] = None
+            spec["kind"] = _detect_media_kind(media_type)
+
+        return spec
+
+    # Direct external HTTP(S) URL or raw Telegram file_id
+    spec["source"] = clean_url
+    spec["kind"] = _detect_media_kind(media_type, filename=media_name, media_url=clean_url)
+    return spec
+
+
+async def _send_broadcast_to_chat(
+    bot_client,
+    chat_id: int,
+    text_msg: str,
+    parse_mode=None,
+    media_spec: dict = None,
+    media_type_override: str = "auto",
+    media_name: str = "",
+    disable_preview: bool = False
+):
+    """Sends a formatted text or rich-media broadcast message to a single Telegram chat."""
+    clean_text = text_msg or ""
+    has_media = bool(media_spec and (media_spec.get("source") or media_spec.get("copy_ref")))
+
+    if not has_media:
+        return await bot_client.send_message(
+            chat_id,
+            clean_text,
+            parse_mode=parse_mode,
+            disable_web_page_preview=disable_preview
+        )
+
+    use_caption = clean_text if (clean_text and len(clean_text) <= 1024) else None
+    send_followup_text = bool(clean_text and len(clean_text) > 1024)
+    media_source = media_spec.get("source")
+    media_kind = media_spec.get("kind", "photo")
+    copy_ref = media_spec.get("copy_ref")
+
+    async def _dispatch_media(src, kind: str):
+        if kind == "photo":
+            return await bot_client.send_photo(
+                chat_id,
+                photo=src,
+                caption=use_caption,
+                parse_mode=parse_mode
+            )
+        elif kind == "video":
+            return await bot_client.send_video(
+                chat_id,
+                video=src,
+                caption=use_caption,
+                parse_mode=parse_mode
+            )
+        elif kind == "animation":
+            return await bot_client.send_animation(
+                chat_id,
+                animation=src,
+                caption=use_caption,
+                parse_mode=parse_mode
+            )
+        elif kind == "audio":
+            kwargs = {"audio": src, "caption": use_caption, "parse_mode": parse_mode}
+            if media_name:
+                kwargs["file_name"] = media_name
+            return await bot_client.send_audio(chat_id, **kwargs)
+        else:
+            kwargs = {"document": src, "caption": use_caption, "parse_mode": parse_mode}
+            if media_name:
+                kwargs["file_name"] = media_name
+            return await bot_client.send_document(chat_id, **kwargs)
+
+    async def _dispatch_copy():
+        src_chat, src_msg_id = copy_ref
+        copy_kwargs = {
+            "chat_id": chat_id,
+            "from_chat_id": src_chat,
+            "message_id": src_msg_id,
+        }
+        if use_caption is not None:
+            copy_kwargs["caption"] = use_caption
+            copy_kwargs["parse_mode"] = parse_mode
+        return await bot_client.copy_message(**copy_kwargs)
+
+    sent = None
+    if copy_ref and not media_source:
+        sent = await _dispatch_copy()
+    else:
+        try:
+            sent = await _dispatch_media(media_source, media_kind)
+        except (FloodWait, InputUserDeactivated, UserIsBlocked, PeerIdInvalid):
+            raise
+        except Exception:
+            if copy_ref:
+                sent = await _dispatch_copy()
+                media_spec["source"] = None
+            elif isinstance(media_source, str) and media_source.startswith(("http://", "https://")):
+                # Fallback: download remote HTTP(S) media locally when Telegram cannot scrape the URL directly
+                dl_path, dl_ct = await _download_remote_media_to_temp(media_source)
+                media_spec.setdefault("temp_files", []).append(dl_path)
+                detected_kind = _detect_media_kind(media_type_override, filename=dl_path, content_type=dl_ct)
+                media_spec["source"] = dl_path
+                media_spec["kind"] = detected_kind
+                try:
+                    sent = await _dispatch_media(dl_path, detected_kind)
+                except Exception:
+                    media_spec["kind"] = "document"
+                    sent = await _dispatch_media(dl_path, "document")
+            elif media_kind != "document" and isinstance(media_source, str) and os.path.exists(media_source):
+                media_spec["kind"] = "document"
+                sent = await _dispatch_media(media_source, "document")
+            else:
+                raise
+
+    # Cache Telegram file_id on first successful send for fast bulk delivery
+    if sent and not copy_ref:
+        cached_fid = _extract_cached_file_id(sent, media_spec.get("kind", media_kind))
+        if cached_fid:
+            media_spec["source"] = cached_fid
+
+    if send_followup_text:
+        await bot_client.send_message(
+            chat_id,
+            clean_text,
+            parse_mode=parse_mode,
+            disable_web_page_preview=disable_preview
+        )
+
+    return sent
+
+
+async def _run_web_broadcast(
+    text_msg: str,
+    parse_mode_str: str = "html",
+    media_path: str = None,
+    media_url: str = "",
+    media_type: str = "auto",
+    media_name: str = "",
+    disable_preview: bool = False
+):
     """Background broadcast loop triggered from the Telegram Mini App Admin Console."""
     _broadcast_state["running"] = True
     _broadcast_state["sent"] = 0
     _broadcast_state["failed"] = 0
     _broadcast_state["total"] = 0
+    _broadcast_state["has_media"] = bool(media_path or media_url)
+    _broadcast_state["parse_mode"] = parse_mode_str or "html"
+
+    resolved_parse_mode = _resolve_parse_mode(parse_mode_str)
+    staged_log_msg = None
+    bot_client = None
+    media_spec = {"temp_files": [media_path] if media_path else []}
 
     try:
         from plugins import file_rename
         bot_client = getattr(Config, "BOT_CLIENT", None) or getattr(file_rename, "main_bot_client", None)
         if bot_client is None:
             return
+
+        media_spec = await _prepare_broadcast_media(
+            bot_client=bot_client,
+            media_path=media_path,
+            media_url=media_url,
+            media_type=media_type,
+            media_name=media_name
+        )
+
+        # Stage local media once in LOG_CHANNEL to reuse Telegram file_id across all recipients
+        src = media_spec.get("source")
+        if src and isinstance(src, str) and os.path.exists(src) and getattr(Config, "LOG_CHANNEL", None):
+            try:
+                staged_log_msg = await _send_broadcast_to_chat(
+                    bot_client,
+                    Config.LOG_CHANNEL,
+                    text_msg="",
+                    parse_mode=None,
+                    media_spec=media_spec,
+                    media_type_override=media_type,
+                    media_name=media_name
+                )
+            except Exception:
+                pass
 
         all_users = await digital_botz.get_all_users()
         _broadcast_state["total"] = len(all_users)
@@ -1017,12 +1403,30 @@ async def _run_web_broadcast(text_msg: str):
             if not uid:
                 continue
             try:
-                await bot_client.send_message(int(uid), text_msg)
+                await _send_broadcast_to_chat(
+                    bot_client,
+                    int(uid),
+                    text_msg=text_msg,
+                    parse_mode=resolved_parse_mode,
+                    media_spec=media_spec,
+                    media_type_override=media_type,
+                    media_name=media_name,
+                    disable_preview=disable_preview
+                )
                 _broadcast_state["sent"] += 1
             except FloodWait as fw:
                 await asyncio.sleep(fw.value)
                 try:
-                    await bot_client.send_message(int(uid), text_msg)
+                    await _send_broadcast_to_chat(
+                        bot_client,
+                        int(uid),
+                        text_msg=text_msg,
+                        parse_mode=resolved_parse_mode,
+                        media_spec=media_spec,
+                        media_type_override=media_type,
+                        media_name=media_name,
+                        disable_preview=disable_preview
+                    )
                     _broadcast_state["sent"] += 1
                 except Exception:
                     _broadcast_state["failed"] += 1
@@ -1039,26 +1443,56 @@ async def _run_web_broadcast(text_msg: str):
     except asyncio.CancelledError:
         pass
     finally:
+        if staged_log_msg and bot_client and getattr(Config, "LOG_CHANNEL", None):
+            try:
+                await bot_client.delete_messages(Config.LOG_CHANNEL, staged_log_msg.id)
+            except Exception:
+                pass
+        for t_path in media_spec.get("temp_files", []):
+            if t_path and os.path.exists(t_path):
+                try:
+                    os.remove(t_path)
+                except Exception:
+                    pass
         _broadcast_state["running"] = False
         _broadcast_state["task"] = None
 
 
-@DigitalRenameBot.get("/", allow_head=True)
-async def root_route_handler(request):
-    queue_data = await get_queue_data()
-    status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
-
+def _render_html_template(template_path: str, status_data: dict, missing_msg: str) -> web.Response:
     try:
-        with open('templates/welcome.html', 'r', encoding='utf-8') as f:
+        with open(template_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
     except FileNotFoundError:
-        return web.Response(text="API is Operational. (templates/welcome.html is missing)", content_type='text/plain')
+        return web.Response(text=missing_msg, content_type='text/plain')
 
     for key, value in status_data.items():
         if not isinstance(value, (list, dict)):
             html_content = html_content.replace(f'{{{{{key}}}}}', str(value))
 
     return web.Response(text=html_content, content_type='text/html')
+
+
+@DigitalRenameBot.get("/", allow_head=True)
+async def root_route_handler(request):
+    queue_data = await get_queue_data()
+    status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
+    return _render_html_template(
+        'templates/welcome.html',
+        status_data,
+        "API is Operational. (templates/welcome.html is missing)"
+    )
+
+
+@DigitalRenameBot.get("/admin", allow_head=True)
+async def admin_route_handler(request):
+    """Dedicated Admin Console page opened from the dashboard's Admin Console button."""
+    queue_data = await get_queue_data()
+    status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
+    return _render_html_template(
+        'templates/admin.html',
+        status_data,
+        "Admin Console template missing. (templates/admin.html is missing)"
+    )
 
 
 @DigitalRenameBot.get("/api/status")
@@ -1167,6 +1601,150 @@ async def api_admin_user_lookup_handler(request):
     })
 
 
+@DigitalRenameBot.post("/api/admin/broadcast")
+async def api_admin_broadcast_handler(request):
+    """Handles formatted text & media (file upload, Telegram post link, URL, or file_id) broadcasts."""
+    admin_user = _extract_admin_from_request(request)
+    if not admin_user:
+        return web.json_response({"success": False, "error": "Unauthorized Telegram session"}, status=403)
+
+    msg = ""
+    parse_mode_str = "html"
+    media_type = "auto"
+    media_url = ""
+    media_path = None
+    media_name = ""
+    test_only = False
+    disable_preview = False
+
+    content_type = (request.content_type or "").lower()
+
+    try:
+        if "multipart/" in content_type:
+            reader = await request.multipart()
+            while True:
+                part = await reader.next()
+                if part is None:
+                    break
+                field_name = part.name or ""
+                if field_name == "media" and getattr(part, "filename", None):
+                    raw_fname = os.path.basename(part.filename).strip()
+                    if raw_fname:
+                        media_name = raw_fname
+                        os.makedirs("BroadcastTemp", exist_ok=True)
+                        temp_path = os.path.join("BroadcastTemp", f"{uuid.uuid4().hex}_{raw_fname}")
+                        written = 0
+                        with open(temp_path, "wb") as f:
+                            while True:
+                                chunk = await part.read_chunk(65536)
+                                if not chunk:
+                                    break
+                                written += len(chunk)
+                                if written > MAX_BROADCAST_UPLOAD_BYTES:
+                                    raise ValueError("Uploaded media exceeds 28 MB limit.")
+                                f.write(chunk)
+                        if written > 0:
+                            media_path = temp_path
+                        else:
+                            try:
+                                os.remove(temp_path)
+                            except Exception:
+                                pass
+                else:
+                    val = await part.text()
+                    if field_name == "message":
+                        msg = val.strip()
+                    elif field_name == "parse_mode":
+                        parse_mode_str = val.strip() or "html"
+                    elif field_name == "media_type":
+                        media_type = val.strip() or "auto"
+                    elif field_name == "media_url":
+                        media_url = val.strip()
+                    elif field_name == "test_only":
+                        test_only = val.strip().lower() in ("1", "true", "yes", "on")
+                    elif field_name == "disable_preview":
+                        disable_preview = val.strip().lower() in ("1", "true", "yes", "on")
+        else:
+            body = await request.json()
+            msg = str(body.get("message", "")).strip()
+            parse_mode_str = str(body.get("parse_mode", "html")).strip() or "html"
+            media_type = str(body.get("media_type", "auto")).strip() or "auto"
+            media_url = str(body.get("media_url", "")).strip()
+            test_only = bool(body.get("test_only", False))
+            disable_preview = bool(body.get("disable_preview", False))
+    except Exception as e:
+        if media_path and os.path.exists(media_path):
+            try:
+                os.remove(media_path)
+            except Exception:
+                pass
+        return web.json_response({"success": False, "error": str(e)}, status=400)
+
+    has_media = bool(media_path or media_url)
+    if not msg and not has_media:
+        return web.json_response({"success": False, "error": "Provide a broadcast message or attach media."}, status=400)
+
+    # Admin DM test preview before sending to all users
+    if test_only:
+        media_spec = {"temp_files": [media_path] if media_path else []}
+        try:
+            from plugins import file_rename
+            bot_client = getattr(Config, "BOT_CLIENT", None) or getattr(file_rename, "main_bot_client", None)
+            if bot_client is None:
+                return web.json_response({"success": False, "error": "Bot client is not initialized yet."}, status=503)
+
+            resolved_pm = _resolve_parse_mode(parse_mode_str)
+            media_spec = await _prepare_broadcast_media(
+                bot_client=bot_client,
+                media_path=media_path,
+                media_url=media_url,
+                media_type=media_type,
+                media_name=media_name
+            )
+
+            await _send_broadcast_to_chat(
+                bot_client,
+                int(admin_user["id"]),
+                text_msg=msg,
+                parse_mode=resolved_pm,
+                media_spec=media_spec,
+                media_type_override=media_type,
+                media_name=media_name,
+                disable_preview=disable_preview
+            )
+            return web.json_response({"success": True, "message": "Test preview sent to your Telegram DM!"})
+        except Exception as e:
+            return web.json_response({"success": False, "error": f"Formatting/Media error: {e}"}, status=400)
+        finally:
+            for t_path in media_spec.get("temp_files", []):
+                if t_path and os.path.exists(t_path):
+                    try:
+                        os.remove(t_path)
+                    except Exception:
+                        pass
+
+    if _broadcast_state["running"]:
+        if media_path and os.path.exists(media_path):
+            try:
+                os.remove(media_path)
+            except Exception:
+                pass
+        return web.json_response({"success": False, "error": "A broadcast is already running"}, status=409)
+
+    _broadcast_state["task"] = asyncio.create_task(
+        _run_web_broadcast(
+            text_msg=msg,
+            parse_mode_str=parse_mode_str,
+            media_path=media_path,
+            media_url=media_url,
+            media_type=media_type,
+            media_name=media_name,
+            disable_preview=disable_preview
+        )
+    )
+    return web.json_response({"success": True, "message": "Global broadcast started."})
+
+
 @DigitalRenameBot.post("/api/admin/action")
 async def api_admin_action_handler(request):
     """Executes authenticated Telegram Mini App admin commands."""
@@ -1235,7 +1813,9 @@ async def api_admin_action_handler(request):
     elif action == "toggle_pause":
         try:
             from plugins import file_rename
-            file_rename.queue_paused = not bool(getattr(file_rename, "queue_paused", False))
+            new_paused = not bool(getattr(file_rename, "queue_paused", False))
+            persisted = await digital_botz.set_maintenance_state(queue_paused=new_paused)
+            file_rename.queue_paused = bool(persisted.get("queue_paused", new_paused))
             state_label = "PAUSED (draining active tasks)" if file_rename.queue_paused else "RESUMED (accepting files)"
             return web.json_response({
                 "success": True,
@@ -1248,10 +1828,13 @@ async def api_admin_action_handler(request):
     elif action == "set_maintenance_message":
         try:
             from plugins import file_rename
-            file_rename.maintenance_message = str(body.get("message", "")).strip()
+            new_msg = str(body.get("message", "")).strip()
+            persisted = await digital_botz.set_maintenance_state(maintenance_message=new_msg)
+            file_rename.maintenance_message = str(persisted.get("maintenance_message", new_msg))
             return web.json_response({
                 "success": True,
-                "message": "Maintenance notice updated." if file_rename.maintenance_message else "Maintenance notice cleared."
+                "maintenance_message": file_rename.maintenance_message,
+                "message": "Maintenance notice saved & persisted." if file_rename.maintenance_message else "Maintenance notice cleared."
             })
         except Exception as e:
             return web.json_response({"success": False, "error": str(e)}, status=500)
@@ -1363,11 +1946,24 @@ async def api_admin_action_handler(request):
 
     elif action == "broadcast_start":
         msg = str(body.get("message", "")).strip()
-        if not msg:
-            return web.json_response({"success": False, "error": "Broadcast message cannot be empty"}, status=400)
+        parse_mode_str = str(body.get("parse_mode", "html")).strip() or "html"
+        media_url = str(body.get("media_url", "")).strip()
+        media_type = str(body.get("media_type", "auto")).strip() or "auto"
+        disable_preview = bool(body.get("disable_preview", False))
+
+        if not msg and not media_url:
+            return web.json_response({"success": False, "error": "Broadcast message or media cannot be empty"}, status=400)
         if _broadcast_state["running"]:
             return web.json_response({"success": False, "error": "A broadcast is already running"}, status=409)
-        _broadcast_state["task"] = asyncio.create_task(_run_web_broadcast(msg))
+        _broadcast_state["task"] = asyncio.create_task(
+            _run_web_broadcast(
+                text_msg=msg,
+                parse_mode_str=parse_mode_str,
+                media_url=media_url,
+                media_type=media_type,
+                disable_preview=disable_preview
+            )
+        )
         return web.json_response({"success": True, "message": "Global broadcast started."})
 
     elif action == "broadcast_cancel":
@@ -1423,6 +2019,16 @@ async def api_stream_handler(request):
 
 
 async def _on_startup_analytics(app):
+    try:
+        from plugins import file_rename
+        if hasattr(file_rename, "load_persisted_maintenance_state"):
+            await file_rename.load_persisted_maintenance_state()
+        else:
+            state = await digital_botz.get_maintenance_state()
+            file_rename.queue_paused = bool(state.get("queue_paused", False))
+            file_rename.maintenance_message = str(state.get("maintenance_message", "") or "")
+    except Exception:
+        pass
     app["analytics_rollup_task"] = asyncio.create_task(_analytics_rollup_loop())
 
 
