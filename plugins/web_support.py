@@ -247,6 +247,62 @@ def _extract_admin_from_request(request):
     return user_obj
 
 
+def _get_bot_client():
+    try:
+        from plugins import file_rename
+        return getattr(Config, "BOT_CLIENT", None) or getattr(file_rename, "main_bot_client", None)
+    except Exception:
+        return getattr(Config, "BOT_CLIENT", None)
+
+
+async def _notify_user_and_admin(
+    bot_client,
+    admin_id: int,
+    target_uid: int,
+    user_text: str,
+    admin_text_builder,
+    log_text: str = ""
+) -> bool:
+    """Sends DM notifications to the target user and the acting admin, plus optional log channel."""
+    if not bot_client:
+        return False
+
+    user_notified = False
+    if user_text:
+        try:
+            await bot_client.send_message(
+                chat_id=int(target_uid),
+                text=user_text,
+                disable_web_page_preview=True
+            )
+            user_notified = True
+        except Exception:
+            user_notified = False
+
+    admin_msg = admin_text_builder(user_notified) if callable(admin_text_builder) else str(admin_text_builder)
+    if admin_id and admin_msg:
+        try:
+            await bot_client.send_message(
+                chat_id=int(admin_id),
+                text=admin_msg,
+                disable_web_page_preview=True
+            )
+        except Exception:
+            pass
+
+    if log_text and getattr(Config, "LOG_CHANNEL", None):
+        try:
+            await bot_client.send_message(
+                chat_id=Config.LOG_CHANNEL,
+                text=log_text,
+                disable_web_page_preview=True
+            )
+        except Exception:
+            pass
+
+    return user_notified
+
+
 def format_short_number(num):
     """Formats numbers to 1k, 1.8k, 2.39k formats."""
     if num < 1000:
@@ -1364,8 +1420,7 @@ async def _run_web_broadcast(
     media_spec = {"temp_files": [media_path] if media_path else []}
 
     try:
-        from plugins import file_rename
-        bot_client = getattr(Config, "BOT_CLIENT", None) or getattr(file_rename, "main_bot_client", None)
+        bot_client = _get_bot_client()
         if bot_client is None:
             return
 
@@ -1688,8 +1743,7 @@ async def api_admin_broadcast_handler(request):
     if test_only:
         media_spec = {"temp_files": [media_path] if media_path else []}
         try:
-            from plugins import file_rename
-            bot_client = getattr(Config, "BOT_CLIENT", None) or getattr(file_rename, "main_bot_client", None)
+            bot_client = _get_bot_client()
             if bot_client is None:
                 return web.json_response({"success": False, "error": "Bot client is not initialized yet."}, status=503)
 
@@ -1846,42 +1900,209 @@ async def api_admin_action_handler(request):
             if not uid:
                 return web.json_response({"success": False, "error": "Invalid user ID"}, status=400)
 
+            admin_id = int(admin_user.get("id", 0))
+            admin_first = admin_user.get("first_name", "Admin")
+            admin_mention = f"[{admin_first}](tg://user?id={admin_id})" if admin_id else "Admin"
+
+            bot_client = _get_bot_client()
+            user_mention = f"[User {uid}](tg://user?id={uid})"
+            if bot_client:
+                try:
+                    tg_target = await bot_client.get_users(uid)
+                    user_mention = tg_target.mention
+                except Exception:
+                    pass
+
+            tz_eat = pytz.timezone("Africa/Nairobi")
+            now_eat = datetime.now(tz_eat)
+            current_time_str = now_eat.strftime("%d-%m-%Y\n⏱️ ᴊᴏɪɴɪɴɢ ᴛɪᴍᴇ : %I:%M:%S %p")
+
             if op == "grant_premium":
                 days = int(body.get("days", 30))
+                plan_type = str(body.get("plan_type", "UltraPro")).strip() or "UltraPro"
+                if plan_type not in ("Pro", "UltraPro"):
+                    plan_type = "UltraPro"
+                limit_bytes = 107374182400 if plan_type == "Pro" else 1073741824000
+
                 if days <= 0:
-                    user_data = {"id": uid, "expiry_time": None, "is_lifetime": True}
-                    label = "Lifetime ♾️"
+                    expiry_time = None
+                    is_lifetime = True
+                    time_label = "Lifetime ♾️"
                 else:
                     expiry_time = datetime.now() + timedelta(days=days)
-                    user_data = {"id": uid, "expiry_time": expiry_time, "is_lifetime": False}
-                    label = f"{days}d"
-                await digital_botz.add_premium(uid, user_data, limit=1073741824000, type="UltraPro")
-                return web.json_response({"success": True, "message": f"Granted UltraPro ({label}) to {uid}."})
+                    is_lifetime = False
+                    time_label = f"{days} day{'s' if days != 1 else ''}"
+
+                user_data = {"id": uid, "expiry_time": expiry_time, "is_lifetime": is_lifetime}
+                if hasattr(digital_botz, "addpremium"):
+                    await digital_botz.addpremium(uid, user_data, limit_bytes, plan_type)
+                else:
+                    await digital_botz.add_premium(uid, user_data, limit=limit_bytes, type=plan_type)
+
+                db_u = await digital_botz.get_user_data(uid) or {}
+                applied_limit = int(db_u.get("uploadlimit", limit_bytes) or limit_bytes)
+                applied_type = db_u.get("usertype", plan_type) or plan_type
+
+                prem_doc = await digital_botz.get_user(uid) or {}
+                expiry_val = prem_doc.get("expiry_time", expiry_time)
+                if prem_doc.get("is_lifetime", is_lifetime):
+                    expiry_str = "Lifetime ♾️"
+                elif isinstance(expiry_val, datetime):
+                    exp_local = expiry_val.astimezone(tz_eat) if expiry_val.tzinfo else pytz.utc.localize(expiry_val).astimezone(tz_eat)
+                    expiry_str = exp_local.strftime("%d-%m-%Y\n⏱️ ᴇxᴘɪʀʏ ᴛɪᴍᴇ : %I:%M:%S %p")
+                else:
+                    expiry_str = str(expiry_val)
+
+                user_dm = (
+                    f"👋 ʜᴇʏ {user_mention},\n"
+                    f"ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ᴘᴜʀᴄʜᴀꜱɪɴɢ ᴘʀᴇᴍɪᴜᴍ.\n"
+                    f"ᴇɴᴊᴏʏ !! ✨🎉\n\n"
+                    f"⏰ ᴘʀᴇᴍɪᴜᴍ ᴀᴄᴄᴇꜱꜱ : <code>{time_label}</code>\n"
+                    f"ᴘʟᴀɴ :- `{applied_type}`\n"
+                    f"ᴅᴀɪʟʏ ᴜᴘʟᴏᴀᴅ ʟɪᴍɪᴛ :- `{humanbytes(applied_limit)}`\n"
+                    f"⏳ ᴊᴏɪɴɪɴɢ ᴅᴀᴛᴇ : {current_time_str}\n\n"
+                    f"⌛️ ᴇxᴘɪʀʏ ᴅᴀᴛᴇ : {expiry_str}"
+                )
+
+                def _admin_dm(notified: bool):
+                    notify_note = "✅ User notified via DM." if notified else "⚠️ User DM failed (blocked/unreachable)."
+                    return (
+                        f"ᴘʀᴇᴍɪᴜᴍ ᴀᴅᴅᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ✅ (Mini App)\n\n"
+                        f"👤 ᴜꜱᴇʀ : {user_mention}\n"
+                        f"⚡ ᴜꜱᴇʀ ɪᴅ : <code>{uid}</code>\n"
+                        f"ᴘʟᴀɴ :- `{applied_type}`\n"
+                        f"ᴅᴀɪʟʏ ᴜᴘʟᴏᴀᴅ ʟɪᴍɪᴛ :- `{humanbytes(applied_limit)}`\n"
+                        f"⏰ ᴘʀᴇᴍɪᴜᴍ ᴀᴄᴄᴇꜱꜱ : <code>{time_label}</code>\n\n"
+                        f"⏳ ᴊᴏɪɴɪɴɢ ᴅᴀᴛᴇ : {current_time_str}\n\n"
+                        f"⌛️ ᴇxᴘɪʀʏ ᴅᴀᴛᴇ : {expiry_str}\n\n"
+                        f"{notify_note}"
+                    )
+
+                notified = await _notify_user_and_admin(
+                    bot_client,
+                    admin_id,
+                    uid,
+                    user_dm,
+                    _admin_dm,
+                    log_text=f"#AdminAction #GrantPremium\nAdmin: {admin_mention} (`{admin_id}`)\nUser: {user_mention} (`{uid}`)\nPlan: `{applied_type}` ({time_label})"
+                )
+                _db_cache["timestamp"] = 0.0
+                return web.json_response({
+                    "success": True,
+                    "message": f"Granted {applied_type} ({time_label}) to {uid}. {'User & admin notified.' if notified else 'Admin notified (user DM failed).'}"
+                })
 
             elif op == "revoke_premium":
                 await digital_botz.remove_premium(uid)
-                return web.json_response({"success": True, "message": f"Revoked premium for {uid}."})
+                user_dm = (
+                    f"**ʜᴇʏ {user_mention},\n\n"
+                    f"✨ ʏᴏᴜʀ ᴀᴄᴄᴏᴜɴᴛ ʜᴀs ʙᴇᴇɴ ʀᴇᴍᴏᴠᴇᴅ ғʀᴏᴍ ᴏᴜʀ ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ\n\n"
+                    f"ᴄʜᴇᴄᴋ ʏᴏᴜʀ ᴘʟᴀɴ ʜᴇʀᴇ /myplan**"
+                )
+
+                def _admin_dm(notified: bool):
+                    notify_note = "✅ User notified via DM." if notified else "⚠️ User DM failed (blocked/unreachable)."
+                    return (
+                        f"ʜᴇʏ {user_mention} (`{uid}`), ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ sᴜᴄᴄᴇssғᴜʟʟʏ ʀᴇᴍᴏᴠᴇᴅ via Mini App.\n\n"
+                        f"{notify_note}"
+                    )
+
+                notified = await _notify_user_and_admin(
+                    bot_client,
+                    admin_id,
+                    uid,
+                    user_dm,
+                    _admin_dm,
+                    log_text=f"#AdminAction #RevokePremium\nAdmin: {admin_mention} (`{admin_id}`)\nUser: {user_mention} (`{uid}`)"
+                )
+                _db_cache["timestamp"] = 0.0
+                return web.json_response({
+                    "success": True,
+                    "message": f"Revoked premium for {uid}. {'User & admin notified.' if notified else 'Admin notified (user DM failed).'}"
+                })
 
             elif op == "ban":
-                await digital_botz.ban_user(uid, 3650, "Banned via Web Admin Console")
-                return web.json_response({"success": True, "message": f"User {uid} banned."})
+                ban_duration = int(body.get("duration", 3650))
+                ban_reason = str(body.get("reason", "Banned via Web Admin Console")).strip() or "Banned via Web Admin Console"
+                await digital_botz.ban_user(uid, ban_duration, ban_reason)
+
+                user_dm = (
+                    f"🚫 You are banned from using this bot for **{ban_duration}** day(s) for the reason: __{ban_reason}__\n\n"
+                    f"**Message from the admin**"
+                )
+
+                def _admin_dm(notified: bool):
+                    notify_note = "User notified successfully!" if notified else "User notification failed (user may have blocked the bot)."
+                    return (
+                        f"🚫 Banned user {user_mention} (`{uid}`) for **{ban_duration}** day(s) via Mini App.\n"
+                        f"**Reason:** __{ban_reason}__\n\n"
+                        f"{notify_note}"
+                    )
+
+                notified = await _notify_user_and_admin(
+                    bot_client,
+                    admin_id,
+                    uid,
+                    user_dm,
+                    _admin_dm,
+                    log_text=f"#AdminAction #Ban\nAdmin: {admin_mention} (`{admin_id}`)\nUser: {user_mention} (`{uid}`)\nDuration: {ban_duration}d\nReason: {ban_reason}"
+                )
+                return web.json_response({
+                    "success": True,
+                    "message": f"User {uid} banned. {'User & admin notified.' if notified else 'Admin notified (user DM failed).'}"
+                })
 
             elif op == "unban":
                 await digital_botz.remove_ban(uid)
-                return web.json_response({"success": True, "message": f"User {uid} unbanned."})
+                user_dm = "✅ Your ban was lifted! You can use the bot again."
+
+                def _admin_dm(notified: bool):
+                    notify_note = "User notified successfully!" if notified else "User notification failed!"
+                    return f"🔓 Unbanned user {user_mention} (`{uid}`) via Mini App.\n\n{notify_note}"
+
+                notified = await _notify_user_and_admin(
+                    bot_client,
+                    admin_id,
+                    uid,
+                    user_dm,
+                    _admin_dm,
+                    log_text=f"#AdminAction #Unban\nAdmin: {admin_mention} (`{admin_id}`)\nUser: {user_mention} (`{uid}`)"
+                )
+                return web.json_response({
+                    "success": True,
+                    "message": f"User {uid} unbanned. {'User & admin notified.' if notified else 'Admin notified (user DM failed).'}"
+                })
 
             elif op == "clear_tasks":
                 from helper.database import Task
-                from plugins.file_rename import active_tasks
+                from plugins.file_rename import active_tasks, active_progress
                 user_tasks = await Task.find(Task.user_id == uid).to_list()
                 cleared = 0
                 for t in user_tasks:
                     tid = str(t.id)
                     if tid in active_tasks:
                         active_tasks[tid].cancel()
+                    active_progress.pop(tid, None)
                     await t.delete()
                     cleared += 1
-                return web.json_response({"success": True, "message": f"Cleared {cleared} task(s) for user {uid}."})
+
+                user_dm = f"⚠️ Your **{cleared}** active/queued task(s) were cleared by an administrator."
+
+                def _admin_dm(notified: bool):
+                    notify_note = "User notified via DM." if notified else "User DM failed."
+                    return f"🧹 Cleared **{cleared}** task(s) for {user_mention} (`{uid}`) via Mini App.\n{notify_note}"
+
+                notified = await _notify_user_and_admin(
+                    bot_client,
+                    admin_id,
+                    uid,
+                    user_dm if cleared > 0 else "",
+                    _admin_dm
+                )
+                return web.json_response({
+                    "success": True,
+                    "message": f"Cleared {cleared} task(s) for user {uid}. {'User & admin notified.' if notified else 'Admin notified.'}"
+                })
 
             return web.json_response({"success": False, "error": "Unknown user operation"}, status=400)
         except Exception as e:
