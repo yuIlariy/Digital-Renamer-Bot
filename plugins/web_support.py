@@ -252,16 +252,11 @@ def extract_extension(filename: str) -> str:
 
 
 def mask_filename(filename: str) -> str:
-    """Masks sensitive middle characters of filenames for public telemetry viewers."""
+    """Masks filenames for non-owner/non-admin telemetry viewers while preserving extension."""
     if not filename or not isinstance(filename, str):
-        return "Protected_File"
-    if "." in filename:
-        stem, ext = filename.rsplit(".", 1)
-        ext_part = f".{ext}" if len(ext) <= 8 else ""
-    else:
-        stem, ext_part = filename, ""
-    visible = stem[:4] if len(stem) > 4 else stem[:2]
-    return f"{visible}••••{ext_part}"
+        return "••••••••"
+    ext = extract_extension(filename)
+    return f"••••••••.{ext.lower()}" if ext else "••••••••"
 
 
 def parse_human_bytes(size_str):
@@ -1095,7 +1090,11 @@ async def api_user_plan_handler(request):
 
     user_id = int(user_obj["id"])
     plan_payload = await _build_user_plan_payload(user_id)
-    return web.json_response({"authenticated": True, **plan_payload})
+    return web.json_response({
+        "authenticated": True,
+        "first_name": user_obj.get("first_name", ""),
+        **plan_payload
+    })
 
 
 @DigitalRenameBot.get("/api/analytics/7d")
