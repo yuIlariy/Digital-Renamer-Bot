@@ -11,11 +11,11 @@ Apache License 2.0
 Copyright (c) 2022 @Digital_Botz
 """
 
-import datetime, time, pytz
+import datetime, time, pytz, re
 from typing import Optional, Any, List, Dict
 from pymongo import AsyncMongoClient
 from pydantic import BaseModel, Field
-from beanie import Document, init_beanie
+from beanie import Document, PydanticObjectId, init_beanie
 from config import Config
 from helper.utils import send_log
 
@@ -144,6 +144,20 @@ class Database:
 
     async def is_user_exist(self, id: int):
         return await User.get(id) is not None
+
+    async def find_user_by_query(self, query: str) -> Optional[dict]:
+        """Finds a user document by numeric Telegram ID or @username."""
+        if self.db is None or not query:
+            return None
+        q = query.strip()
+        if q.isdigit():
+            return await self.db["user"].find_one({"_id": int(q)})
+        uname = q.lstrip("@")
+        if uname:
+            return await self.db["user"].find_one(
+                {"username": {"$regex": f"^{re.escape(uname)}$", "$options": "i"}}
+            )
+        return None
 
     async def total_users_count(self):
         return await User.count()
@@ -537,6 +551,15 @@ class Database:
             docs_by_day[doc["_id"]] = doc
         return docs_by_day
 
+    async def get_hourly_analytics_docs(self, hour_keys: List[str]) -> Dict[str, dict]:
+        if self.db is None or not hour_keys:
+            return {}
+        docs_by_hour = {}
+        cursor = self.db["analytics_hourly"].find({"_id": {"$in": hour_keys}})
+        async for doc in cursor:
+            docs_by_hour[doc["_id"]] = doc
+        return docs_by_hour
+
     async def prune_hourly_analytics(self, cutoff_key: str):
         if self.db is None:
             return
@@ -579,13 +602,16 @@ class Database:
         return task.id
 
     async def update_task_status(self, task_id, status: str):
-        task = await Task.get(task_id)
+        oid = PydanticObjectId(task_id) if isinstance(task_id, str) and PydanticObjectId.is_valid(task_id) else task_id
+        task = await Task.get(oid)
         if task:
             task.status = status
             await task.save()
 
     async def delete_task(self, task_id):
-        task = await Task.get(task_id)
-        if task: await task.delete()
+        oid = PydanticObjectId(task_id) if isinstance(task_id, str) and PydanticObjectId.is_valid(task_id) else task_id
+        task = await Task.get(oid)
+        if task:
+            await task.delete()
 
 digital_botz = Database(Config.DB_URL, Config.DB_NAME)
