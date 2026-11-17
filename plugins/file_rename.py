@@ -64,6 +64,8 @@ upload_lock = asyncio.Lock()
 active_tasks = {}
 active_progress = {}
 queue_paused = False  # Controlled via Telegram Mini App Admin Console
+maintenance_message = ""  # Optional custom notice shown when queue_paused is True
+main_bot_client = None  # Cached main bot Client reference for web broadcasts
 
 
 def _get_admin_ids():
@@ -123,17 +125,16 @@ class SilentUIMessage:
             self._msg = None
 
 
-async def custom_progress(current, total, text, message, start, task_id, filename, worker_id=None):
+async def custom_progress(current, total, text, message, start, task_id, filename, worker_id=None, user_id=None):
     """Intercepts progress to update the live web dashboard while maintaining Telegram updates."""
     percentage = round((current / total) * 100, 2) if total else 0
     diff = time.time() - start
     speed = current / diff if diff > 0 else 0
 
     task_key = str(task_id)
-
-    last_ui_update = 0
-    if task_key in active_progress:
-        last_ui_update = active_progress[task_key].get("last_ui_update", 0)
+    prev_entry = active_progress.get(task_key, {})
+    last_ui_update = prev_entry.get("last_ui_update", 0)
+    resolved_user_id = user_id if user_id is not None else prev_entry.get("user_id")
 
     active_progress[task_key] = {
         "filename": filename,
@@ -144,6 +145,7 @@ async def custom_progress(current, total, text, message, start, task_id, filenam
         "current": humanbytes(current),
         "total": humanbytes(total),
         "worker_id": worker_id,
+        "user_id": resolved_user_id,
         "last_ui_update": last_ui_update
     }
 
@@ -178,7 +180,10 @@ def get_least_busy_worker(main_client):
                 w.is_healthy = True
                 w.unhealthy_until = 0
 
-    healthy_workers = [w for w in workers if getattr(w, "is_healthy", True)]
+    healthy_workers = [
+        w for w in workers
+        if getattr(w, "is_healthy", True) and not getattr(w, "disabled", False)
+    ]
 
     if not healthy_workers:
         return main_client
@@ -204,6 +209,8 @@ def get_least_busy_worker(main_client):
 # --- REBOOT RESUME FUNCTION & REAPER ---
 # ==========================================
 async def resume_all_tasks(client):
+    global main_bot_client
+    main_bot_client = client
     print("🔄 Checking for incomplete tasks to resume...")
     try:
         shutil.rmtree("Renames", ignore_errors=True)
@@ -267,9 +274,16 @@ async def resume_all_tasks(client):
 
 @Client.on_message(filters.private & (filters.audio | filters.document | filters.video))
 async def rename_start(client, message):
+    global main_bot_client
+    main_bot_client = client
     user_id = message.from_user.id
 
     if queue_paused and user_id not in _get_admin_ids():
+        custom_notice = (maintenance_message or "").strip()
+        if custom_notice:
+            return await message.reply_text(
+                f"⏸️ **Qᴜᴇᴜᴇ Pᴀᴜꜱᴇᴅ ꜰᴏʀ Mᴀɪɴᴛᴇɴᴀɴᴄᴇ**\n\n{custom_notice}"
+            )
         return await message.reply_text(
             "⏸️ **Qᴜᴇᴜᴇ Pᴀᴜꜱᴇᴅ ꜰᴏʀ Mᴀɪɴᴛᴇɴᴀɴᴄᴇ**\n\n"
             "The server is currently draining active tasks before maintenance.\n"
@@ -389,10 +403,13 @@ async def refunc(client, message):
 
 @Client.on_callback_query(filters.regex("upload"))
 async def doc(client, update):
+    global main_bot_client
+    main_bot_client = client
     user_id = int(update.message.chat.id)
     if queue_paused and user_id not in _get_admin_ids():
         try:
-            await update.answer("⏸️ Queue is paused for maintenance. Try again shortly.", show_alert=True)
+            alert_text = (maintenance_message or "").strip() or "⏸️ Queue is paused for maintenance. Try again shortly."
+            await update.answer(alert_text[:190], show_alert=True)
         except Exception:
             pass
         return
@@ -428,6 +445,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
     metadata_path = None
     ph_path = None
     log_msg_down = None
+    quota_charged = False
 
     task_renames_dir = f"Renames/{task_id}"
     task_meta_dir = f"Metadata/{task_id}"
@@ -468,9 +486,13 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 
         if main_client.premium and main_client.uploadlimit:
             await digital_botz.increment_used_limit(user_id, media.file_size)
+            quota_charged = True
 
         check_task = await Task.get(task_id)
         if not check_task:
+            if quota_charged and main_client.premium and main_client.uploadlimit:
+                await digital_botz.increment_used_limit(user_id, -media.file_size)
+                quota_charged = False
             print(f"Task {task_id} cancelled before download.")
             return
 
@@ -506,7 +528,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         message=target_msg,
                         file_name=file_path,
                         progress=custom_progress,
-                        progress_args=(DOWNLOAD_TEXT, rkn_processing, dl_start_time, task_id, new_filename, id(worker_client))
+                        progress_args=(DOWNLOAD_TEXT, rkn_processing, dl_start_time, task_id, new_filename, id(worker_client), user_id)
                     ),
                     timeout=7200
                 )
@@ -541,8 +563,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         pass
                     log_msg_down = None
 
-                if main_client.premium and main_client.uploadlimit:
+                if quota_charged and main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
+                    quota_charged = False
                 await digital_botz.delete_task(task_id)
                 return
 
@@ -552,6 +575,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 if isinstance(e, FloodWait) and worker_client != main_client:
                     worker_client.is_healthy = False
                     worker_client.unhealthy_until = time.time() + e.value
+                    worker_client.floodwait_count = int(getattr(worker_client, "floodwait_count", 0)) + 1
+                    worker_client.floodwait_total_sec = int(getattr(worker_client, "floodwait_total_sec", 0)) + int(e.value)
 
                     if e.value > 15 and len(workers_list) > 1:
                         worker_loads[worker_client] = max(0, worker_loads.get(worker_client, 0) - 1)
@@ -588,8 +613,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     await asyncio.sleep(wait_time)
 
         if not dl_path:
-            if main_client.premium and main_client.uploadlimit:
+            if quota_charged and main_client.premium and main_client.uploadlimit:
                 await digital_botz.increment_used_limit(user_id, -media.file_size)
+                quota_charged = False
             await digital_botz.delete_task(task_id)
             if rkn_processing:
                 try:
@@ -656,8 +682,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     duration=convert(duration)
                 )
             except Exception as e:
-                if main_client.premium and main_client.uploadlimit:
+                if quota_charged and main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
+                    quota_charged = False
                 await digital_botz.delete_task(task_id)
                 if "MESSAGE_ID_INVALID" not in str(e):
                     if rkn_processing:
@@ -698,6 +725,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 
         check_task = await Task.get(task_id)
         if not check_task:
+            if quota_charged and main_client.premium and main_client.uploadlimit:
+                await digital_botz.increment_used_limit(user_id, -media.file_size)
+                quota_charged = False
             print(f"Task {task_id} cancelled before upload.")
             return
 
@@ -726,7 +756,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         if not is_main_bot:
                             filw, error = await upload_files(
                                 uploader, Config.LOG_CHANNEL, upload_type, file_to_upload,
-                                ph_path, caption, duration, rkn_processing, new_filename, task_id
+                                ph_path, caption, duration, rkn_processing, new_filename, task_id, user_id
                             )
                             if error:
                                 raise Exception(error)
@@ -751,7 +781,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                         else:
                             filw, error = await upload_files(
                                 main_client, user_id, upload_type, file_to_upload,
-                                ph_path, caption, duration, rkn_processing, new_filename, task_id
+                                ph_path, caption, duration, rkn_processing, new_filename, task_id, user_id
                             )
                             if error:
                                 raise Exception(error)
@@ -824,8 +854,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             except asyncio.TimeoutError:
                 upload_attempts += 1
                 if upload_attempts >= max_up_attempts - 1:
-                    if main_client.premium and main_client.uploadlimit:
+                    if quota_charged and main_client.premium and main_client.uploadlimit:
                         await digital_botz.increment_used_limit(user_id, -media.file_size)
+                        quota_charged = False
                     await digital_botz.delete_task(task_id)
                     if rkn_processing:
                         try:
@@ -841,8 +872,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 await asyncio.sleep(5)
 
             except MessageIdInvalid:
-                if main_client.premium and main_client.uploadlimit:
+                if quota_charged and main_client.premium and main_client.uploadlimit:
                     await digital_botz.increment_used_limit(user_id, -media.file_size)
+                    quota_charged = False
                 await digital_botz.delete_task(task_id)
                 break
 
@@ -852,6 +884,8 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                 if isinstance(e, FloodWait) and uploader != app and not is_main_bot:
                     uploader.is_healthy = False
                     uploader.unhealthy_until = time.time() + e.value
+                    uploader.floodwait_count = int(getattr(uploader, "floodwait_count", 0)) + 1
+                    uploader.floodwait_total_sec = int(getattr(uploader, "floodwait_total_sec", 0)) + int(e.value)
 
                     if e.value > 15 and len(workers_list) > 1:
                         worker_loads[uploader] = max(0, worker_loads.get(uploader, 0) - 1)
@@ -879,8 +913,9 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
                     await asyncio.sleep(2)
                 else:
                     if upload_attempts >= max_up_attempts - 1:
-                        if main_client.premium and main_client.uploadlimit:
+                        if quota_charged and main_client.premium and main_client.uploadlimit:
                             await digital_botz.increment_used_limit(user_id, -media.file_size)
+                            quota_charged = False
                         await digital_botz.delete_task(task_id)
                         if "MESSAGE_ID_INVALID" not in str(e):
                             if rkn_processing:
@@ -899,7 +934,7 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
 
     except asyncio.CancelledError:
         print(f"Task {task_id} was successfully cancelled via active_tasks.")
-        if main_client.premium and main_client.uploadlimit:
+        if quota_charged and main_client.premium and main_client.uploadlimit:
             await digital_botz.increment_used_limit(user_id, -media.file_size)
         await digital_botz.delete_task(task_id)
 
@@ -927,11 +962,11 @@ async def process_single_file(main_client, worker_client, user_id, file_msg, new
             pass
 
 
-async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption, duration, rkn_processing, new_filename, task_id):
+async def upload_files(bot, sender_id, upload_type, file_path, ph_path, caption, duration, rkn_processing, new_filename, task_id, user_id=None):
     try:
         up_start_time = time.time()
         active_prog = custom_progress
-        active_args = (UPLOAD_TEXT, rkn_processing, up_start_time, task_id, new_filename, id(bot))
+        active_args = (UPLOAD_TEXT, rkn_processing, up_start_time, task_id, new_filename, id(bot), user_id)
 
         if upload_type == "document":
             filw = await asyncio.wait_for(bot.send_document(sender_id, document=file_path, file_name=new_filename, thumb=ph_path, caption=caption, progress=active_prog, progress_args=active_args), timeout=7200)

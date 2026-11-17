@@ -19,6 +19,7 @@ import json
 import hmac
 import hashlib
 import asyncio
+import pytz
 from urllib.parse import parse_qsl
 from datetime import datetime, timezone, timedelta
 from config import Config
@@ -27,12 +28,18 @@ from helper.utils import humanbytes
 from helper.database import digital_botz
 from wzgram.types import Message
 
+try:
+    from wzgram.errors import FloodWait, InputUserDeactivated, UserIsBlocked, PeerIdInvalid
+except ImportError:
+    from wzgram.errors import FloodWait
+    InputUserDeactivated = UserIsBlocked = PeerIdInvalid = Exception
+
 # Ensure templates directory exists
 os.makedirs('templates', exist_ok=True)
 
 DigitalRenameBot = web.RouteTableDef()
 
-# --- NETWORK SPEED TRACKER GLOBALS (UNCHANGED) ---
+# --- NETWORK SPEED TRACKER GLOBALS ---
 last_net_io = psutil.net_io_counters()
 last_time = time.time()
 last_up_speed = 0.0
@@ -48,7 +55,7 @@ _db_cache = {
     "net_stats": {"sent": 0, "recv": 0}
 }
 
-# --- PERSISTENT 7-DAY ANALYTICS ROLLUP BUFFER & CACHE ---
+# --- PERSISTENT 7-DAY & 24-HOUR ANALYTICS ROLLUP BUFFER & CACHE ---
 _rollup_buffer = {
     "daily": {},   # { "YYYY-MM-DD": {"renames": int, "bytes": int, "peak": int} }
     "hourly": {}   # { "YYYY-MM-DDTHH": {"renames": int, "bytes": int, "peak": int} }
@@ -64,6 +71,21 @@ _analytics_cache = {
     "timestamp": 0.0,
     "ttl": 15.0,
     "data": None
+}
+
+_analytics_24h_cache = {
+    "timestamp": 0.0,
+    "ttl": 15.0,
+    "data": None
+}
+
+# --- WEB ADMIN BROADCAST STATE ---
+_broadcast_state = {
+    "running": False,
+    "sent": 0,
+    "failed": 0,
+    "total": 0,
+    "task": None
 }
 
 
@@ -91,6 +113,7 @@ def record_rename_event(size_bytes: int = 0):
 
         # Invalidate caches so the next SSE tick reflects the completed task immediately
         _analytics_cache["timestamp"] = 0.0
+        _analytics_24h_cache["timestamp"] = 0.0
         _db_cache["timestamp"] = 0.0
     except Exception:
         pass
@@ -139,8 +162,8 @@ def _get_admin_ids():
     return set()
 
 
-def verify_telegram_webapp(init_data: str):
-    """Validates Telegram WebApp initData via HMAC-SHA256 and checks Config.ADMIN."""
+def verify_telegram_webapp_user(init_data: str):
+    """Validates Telegram WebApp initData via HMAC-SHA256 and returns the user dict."""
     bot_token = getattr(Config, "BOT_TOKEN", "")
     if not init_data or not bot_token:
         return None
@@ -151,7 +174,6 @@ def verify_telegram_webapp(init_data: str):
         if not received_hash:
             return None
 
-        # Reject expired initData older than 24 hours
         auth_date = int(parsed.get("auth_date", 0))
         if auth_date <= 0 or (time.time() - auth_date) > 86400:
             return None
@@ -168,8 +190,7 @@ def verify_telegram_webapp(init_data: str):
             return None
 
         user_obj = json.loads(user_raw)
-        user_id = int(user_obj.get("id", 0))
-        if user_id not in _get_admin_ids():
+        if not int(user_obj.get("id", 0)):
             return None
 
         return user_obj
@@ -177,12 +198,35 @@ def verify_telegram_webapp(init_data: str):
         return None
 
 
-def _extract_admin_from_request(request):
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("tma "):
+def verify_telegram_webapp(init_data: str):
+    """Validates Telegram WebApp initData and ensures user is in Config.ADMIN."""
+    user_obj = verify_telegram_webapp_user(init_data)
+    if not user_obj:
         return None
-    init_data = auth_header[4:].strip()
-    return verify_telegram_webapp(init_data)
+    if int(user_obj.get("id", 0)) not in _get_admin_ids():
+        return None
+    return user_obj
+
+
+def _extract_user_from_request(request):
+    auth_header = request.headers.get("Authorization", "")
+    init_data = ""
+    if auth_header.startswith("tma "):
+        init_data = auth_header[4:].strip()
+    elif "initData" in request.query:
+        init_data = request.query.get("initData", "").strip()
+    if not init_data:
+        return None
+    return verify_telegram_webapp_user(init_data)
+
+
+def _extract_admin_from_request(request):
+    user_obj = _extract_user_from_request(request)
+    if not user_obj:
+        return None
+    if int(user_obj.get("id", 0)) not in _get_admin_ids():
+        return None
+    return user_obj
 
 
 def format_short_number(num):
@@ -205,6 +249,19 @@ def extract_extension(filename: str) -> str:
     if not ext or len(ext) > 8 or "/" in ext or "\\" in ext or " " in ext:
         return ""
     return ext
+
+
+def mask_filename(filename: str) -> str:
+    """Masks sensitive middle characters of filenames for public telemetry viewers."""
+    if not filename or not isinstance(filename, str):
+        return "Protected_File"
+    if "." in filename:
+        stem, ext = filename.rsplit(".", 1)
+        ext_part = f".{ext}" if len(ext) <= 8 else ""
+    else:
+        stem, ext_part = filename, ""
+    visible = stem[:4] if len(stem) > 4 else stem[:2]
+    return f"{visible}••••{ext_part}"
 
 
 def parse_human_bytes(size_str):
@@ -286,7 +343,6 @@ async def _collect_transferred_bytes_delta() -> int:
     except Exception:
         pass
 
-    # Fallback to host NIC byte delta only if BotStats is unused and tasks are active
     if _net_rollup_baseline["recorded_direct_bytes"] > 0:
         _net_rollup_baseline["recorded_direct_bytes"] = 0
         return 0
@@ -315,7 +371,6 @@ async def flush_analytics_rollups():
     now_dt = datetime.now(timezone.utc)
     day_key, hour_key = _utc_keys(now_dt)
 
-    # Fold any external transferred byte delta into the current UTC bucket
     bytes_delta = await _collect_transferred_bytes_delta()
     if bytes_delta > 0:
         d_entry = _rollup_buffer["daily"].setdefault(day_key, {"renames": 0, "bytes": 0, "peak": 0})
@@ -323,7 +378,6 @@ async def flush_analytics_rollups():
         h_entry = _rollup_buffer["hourly"].setdefault(hour_key, {"renames": 0, "bytes": 0, "peak": 0})
         h_entry["bytes"] += bytes_delta
 
-    # Snapshot & swap buffers atomically
     daily_snapshot = _rollup_buffer["daily"]
     hourly_snapshot = _rollup_buffer["hourly"]
     _rollup_buffer["daily"] = {}
@@ -370,7 +424,7 @@ async def flush_analytics_rollups():
 
 async def _analytics_rollup_loop():
     """Lightweight background task sampling peak tasks every 5s and flushing MongoDB rollups every 30s."""
-    await _collect_transferred_bytes_delta()  # Prime initial byte baseline
+    await _collect_transferred_bytes_delta()
     last_flush = time.time()
     last_prune = 0.0
 
@@ -392,9 +446,9 @@ async def _analytics_rollup_loop():
             if now - last_flush >= 30.0:
                 await flush_analytics_rollups()
                 last_flush = now
-                _analytics_cache["timestamp"] = 0.0  # Invalidate 7d cache after flush
+                _analytics_cache["timestamp"] = 0.0
+                _analytics_24h_cache["timestamp"] = 0.0
 
-            # Prune hourly documents older than 8 days once per hour
             if now - last_prune >= 3600.0 and getattr(digital_botz, "db", None) is not None:
                 try:
                     cutoff = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%dT%H")
@@ -472,6 +526,146 @@ async def get_7d_analytics():
     return result
 
 
+async def get_24h_analytics():
+    """Returns 24-hour UTC hourly rollup series with 15s cache."""
+    now_ts = time.time()
+    if _analytics_24h_cache["data"] is not None and (now_ts - _analytics_24h_cache["timestamp"]) < _analytics_24h_cache["ttl"]:
+        return _analytics_24h_cache["data"]
+
+    now_dt = datetime.now(timezone.utc)
+    hour_keys = [(now_dt - timedelta(hours=offset)).strftime("%Y-%m-%dT%H") for offset in range(23, -1, -1)]
+    docs_by_hour = {}
+
+    if getattr(digital_botz, "db", None) is not None:
+        try:
+            docs_by_hour = await digital_botz.get_hourly_analytics_docs(hour_keys)
+        except Exception:
+            pass
+
+    hours_list = []
+    total_renames_24h = 0
+    total_bytes_24h = 0
+    peak_tasks_24h = 0
+
+    for h_key in hour_keys:
+        db_doc = docs_by_hour.get(h_key, {})
+        pending = _rollup_buffer["hourly"].get(h_key, {"renames": 0, "bytes": 0, "peak": 0})
+
+        renames_count = int(db_doc.get("renames_count", 0)) + int(pending.get("renames", 0))
+        bytes_transferred = int(db_doc.get("bytes_transferred", 0)) + int(pending.get("bytes", 0))
+        gb_transferred = round(bytes_transferred / (1024 ** 3), 2)
+        peak_active_tasks = max(int(db_doc.get("peak_active_tasks", 0)), int(pending.get("peak", 0)))
+
+        hr_label = f"{h_key[-2:]}:00"
+        display_date = f"{h_key[:10]} {hr_label} UTC"
+
+        total_renames_24h += renames_count
+        total_bytes_24h += bytes_transferred
+        if peak_active_tasks > peak_tasks_24h:
+            peak_tasks_24h = peak_active_tasks
+
+        hours_list.append({
+            "date": display_date,
+            "hour": hr_label,
+            "label": hr_label,
+            "renames_count": renames_count,
+            "gb_transferred": gb_transferred,
+            "bytes_transferred": bytes_transferred,
+            "peak_active_tasks": peak_active_tasks
+        })
+
+    result = {
+        "days": hours_list,
+        "summary": {
+            "total_renames": total_renames_24h,
+            "total_renames_short": format_short_number(total_renames_24h),
+            "total_gb": round(total_bytes_24h / (1024 ** 3), 2),
+            "peak_active_tasks": peak_tasks_24h
+        }
+    }
+
+    _analytics_24h_cache["data"] = result
+    _analytics_24h_cache["timestamp"] = now_ts
+    return result
+
+
+async def _build_user_plan_payload(user_id: int) -> dict:
+    """Fetches daily usage, limits, and subscription status for a Telegram user."""
+    premium_enabled = bool(getattr(Config, "PREMIUM_MODE", False))
+    upload_limit_mode = bool(getattr(Config, "UPLOAD_LIMIT_MODE", False))
+
+    if upload_limit_mode:
+        try:
+            await digital_botz.reset_uploadlimit_access(user_id)
+        except Exception:
+            pass
+
+    is_premium = False
+    if premium_enabled:
+        try:
+            is_premium = bool(await digital_botz.has_premium_access(user_id))
+        except Exception:
+            is_premium = False
+
+    prem_data = await digital_botz.get_user(user_id) or {}
+    user_data = await digital_botz.get_user_data(user_id) or {}
+
+    is_lifetime = bool(prem_data.get("is_lifetime", False))
+    raw_type = user_data.get("usertype", "Free") or "Free"
+
+    if is_lifetime:
+        plan_name = "Lifetime ♾️"
+        expiry_formatted = "Lifetime ♾️"
+        remaining_time = "Unlimited"
+    elif is_premium:
+        plan_name = f"{raw_type} Plan" if raw_type != "Free" else "Premium Plan"
+        expiry = prem_data.get("expiry_time")
+        if isinstance(expiry, datetime):
+            tz = pytz.timezone("Africa/Nairobi")
+            exp_eat = expiry.astimezone(tz) if expiry.tzinfo else pytz.utc.localize(expiry).astimezone(tz)
+            expiry_formatted = exp_eat.strftime("%d %b %Y, %H:%M EAT")
+            rem_sec = max(0, int((expiry.replace(tzinfo=None) - datetime.now()).total_seconds()))
+            rem_days, rem_s = divmod(rem_sec, 86400)
+            rem_hrs, rem_s = divmod(rem_s, 3600)
+            rem_mins, _ = divmod(rem_s, 60)
+            remaining_time = f"{rem_days}d {rem_hrs}h left" if rem_days > 0 else f"{rem_hrs}h {rem_mins}m left"
+        else:
+            expiry_formatted = "Active"
+            remaining_time = "Active"
+    else:
+        plan_name = "Free Plan"
+        expiry_formatted = "No Expiry"
+        remaining_time = "Resets 00:00 EAT"
+
+    used_bytes = int(user_data.get("used_limit", 0) or 0)
+    limit_bytes = int(user_data.get("uploadlimit", getattr(Config, "FREE_UPLOAD_LIMIT", 0)) or 0)
+
+    if is_lifetime or not upload_limit_mode:
+        daily_limit_human = "Unlimited"
+        remaining_human = "Unlimited"
+        usage_pct = 0
+    else:
+        rem_bytes = max(0, limit_bytes - used_bytes)
+        daily_limit_human = humanbytes(limit_bytes)
+        remaining_human = humanbytes(rem_bytes)
+        usage_pct = round(min(100.0, (used_bytes / limit_bytes) * 100), 1) if limit_bytes > 0 else 0
+
+    has_string = bool(getattr(Config, "STRING_SESSION", None))
+    max_file_size_human = "4 GB+" if (is_premium and has_string) else "2 GB"
+
+    return {
+        "plan_name": plan_name,
+        "is_premium": is_premium or is_lifetime,
+        "expiry_formatted": expiry_formatted,
+        "remaining_time": remaining_time,
+        "daily_used_human": humanbytes(used_bytes),
+        "remaining_human": remaining_human,
+        "daily_limit_human": daily_limit_human,
+        "max_file_size_human": max_file_size_human,
+        "usage_pct": usage_pct
+    }
+
+
 async def get_cached_db_metrics():
     """Fetches DB metrics concurrently with a 15-second TTL cache."""
     now = time.time()
@@ -520,7 +714,7 @@ def _build_worker_lookup():
     return lookup
 
 
-async def get_status(pending_count=0):
+async def get_status(pending_count=0, is_admin=False):
     """Fetches and formats system, fleet, and bot statistics."""
     global last_net_io, last_time, last_up_speed, last_dl_speed
 
@@ -530,21 +724,22 @@ async def get_status(pending_count=0):
         active_tasks = getattr(file_rename, "active_tasks", {})
         active_progress = getattr(file_rename, "active_progress", {})
         queue_paused = bool(getattr(file_rename, "queue_paused", False))
+        maintenance_msg = getattr(file_rename, "maintenance_message", "") or ""
     except ImportError:
         worker_loads = {}
         active_tasks = {}
         active_progress = {}
         queue_paused = False
+        maintenance_msg = ""
 
-    # Fetch cached DB values concurrently
     real_total_users, real_total_premium_users, raw_total_renames, net_stats = await get_cached_db_metrics()
 
-    total_users = real_total_users + 1009
-
-    if getattr(Config, 'PREMIUM_MODE', False):
-        total_premium_users = real_total_premium_users + 50
+    if is_admin:
+        total_users = real_total_users
+        total_premium_users = real_total_premium_users if getattr(Config, 'PREMIUM_MODE', False) else "Disabled ✅"
     else:
-        total_premium_users = "Disabled ✅"
+        total_users = real_total_users + 1009
+        total_premium_users = (real_total_premium_users + 50) if getattr(Config, 'PREMIUM_MODE', False) else "Disabled ✅"
 
     # --- UPTIME CALCULATIONS ---
     now = time.time()
@@ -562,7 +757,7 @@ async def get_status(pending_count=0):
 
     total, used, free = shutil.disk_usage(".")
 
-    # --- OVERALL BANDWIDTH SPEED TRACKER (UNCHANGED) ---
+    # --- OVERALL BANDWIDTH SPEED TRACKER ---
     current_net_io = psutil.net_io_counters()
     current_time = time.time()
     time_delta = current_time - last_time
@@ -596,8 +791,8 @@ async def get_status(pending_count=0):
     for idx, w in enumerate(workers):
         unhealthy_until = float(getattr(w, "unhealthy_until", 0) or 0)
         is_healthy = bool(getattr(w, "is_healthy", True))
+        is_disabled = bool(getattr(w, "disabled", False))
 
-        # Auto-reflect recovery once cooldown expires
         if not is_healthy and unhealthy_until > 0 and now >= unhealthy_until:
             w.is_healthy = True
             w.unhealthy_until = 0
@@ -608,7 +803,7 @@ async def get_status(pending_count=0):
         is_connected = bool(getattr(w, "is_connected", True))
         load = int(worker_loads.get(w, 0))
 
-        if is_healthy:
+        if is_healthy and not is_disabled:
             healthy_workers += 1
         if load > 0:
             active_workers += 1
@@ -623,25 +818,36 @@ async def get_status(pending_count=0):
 
         worker_nodes.append({
             "id": idx + 1,
+            "worker_id": str(id(w)),
             "name": str(w_name),
-            "healthy": is_healthy,
+            "healthy": is_healthy and not is_disabled,
+            "disabled": is_disabled,
             "connected": is_connected,
             "load": load,
             "cooldown_sec": cooldown_sec,
+            "floodwait_count": int(getattr(w, "floodwait_count", 0)),
+            "floodwait_total_sec": int(getattr(w, "floodwait_total_sec", 0)),
             "speed": node_speed_str,
             "speed_bps": round(node_bps, 2),
-            "status": "Rate-Limited" if not is_healthy else ("Busy" if load > 0 else "Idle")
+            "status": "Disabled" if is_disabled else ("Rate-Limited" if not is_healthy else ("Busy" if load > 0 else "Idle"))
         })
 
     free_workers = max(0, healthy_workers - active_workers)
     current_active_tasks = len(active_tasks)
 
+    active_user_ids = {
+        p.get("user_id") for p in list(active_progress.values())
+        if p.get("user_id") is not None
+    }
+    active_batches = len(active_user_ids) if active_user_ids else current_active_tasks
+
     up_speed_str = f"{humanbytes(last_up_speed)}/s" if last_up_speed > 0 else "0 B/s"
     dl_speed_str = f"{humanbytes(last_dl_speed)}/s" if last_dl_speed > 0 else "0 B/s"
 
-    return {
+    payload = {
         "bot_status": "Paused (Draining)" if queue_paused else "Operational",
         "queue_paused": queue_paused,
+        "is_admin": is_admin,
         "bot_version": __version__,
         "total_users": total_users,
         "premium_users": total_premium_users,
@@ -666,20 +872,54 @@ async def get_status(pending_count=0):
         "free_workers": free_workers,
         "worker_nodes": worker_nodes,
         "active_tasks": current_active_tasks,
+        "active_batches": active_batches,
         "pending_tasks": pending_count,
         "timestamp": int(time.time()),
         "github_link": "https://github.com/DigitalBotz/Digital-Rename-Bot",
         "telegram_link": "https://t.me/OtherBs"
     }
 
+    if is_admin or queue_paused:
+        payload["maintenance_message"] = maintenance_msg
 
-async def get_queue_data():
-    """Exposes live split data for Downloads, Uploads, and Pending Tasks from DB & memory."""
+    if is_admin:
+        payload["broadcast"] = {
+            "running": _broadcast_state["running"],
+            "sent": _broadcast_state["sent"],
+            "failed": _broadcast_state["failed"],
+            "total": _broadcast_state["total"]
+        }
+
+    return payload
+
+
+async def get_queue_data(viewer_user_id=None, is_admin=False):
+    """Exposes live split data for Downloads, Uploads, and Pending Tasks with viewer privacy masking."""
     try:
         from helper.database import Task
         from plugins.file_rename import active_progress
     except ImportError:
         return {"success": False, "error": "Cannot load required modules", "downloading": [], "uploading": [], "pending": []}
+
+    def _apply_privacy(item: dict, owner_id):
+        is_owner = (viewer_user_id is not None and owner_id is not None and int(owner_id) == int(viewer_user_id))
+        raw_name = item.get("filename") or "Unknown File"
+        item["extension"] = extract_extension(raw_name)
+        item["is_owner"] = is_owner
+
+        if is_admin or is_owner:
+            item["filename"] = raw_name
+            item["is_masked"] = False
+            if is_admin and owner_id is not None:
+                item["user_id"] = str(owner_id)
+            else:
+                item.pop("user_id", None)
+        else:
+            item["filename"] = mask_filename(raw_name)
+            item["is_masked"] = True
+            item.pop("user_id", None)
+            item.pop("task_id", None)
+        return item
 
     try:
         active_db_tasks = await Task.find_all().to_list()
@@ -693,11 +933,12 @@ async def get_queue_data():
         for task in active_db_tasks:
             tid = str(task.id)
             seen_ids.add(tid)
+            owner_id = getattr(task, "user_id", None)
+
             if tid in active_progress:
                 prog = dict(active_progress[tid])
                 fname = (prog.get("filename") or getattr(task, "new_name", None) or "Unknown File").strip()
                 prog["filename"] = fname
-                prog["extension"] = extract_extension(fname)
                 prog["task_id"] = tid
                 prog["worker_name"] = worker_lookup.get(prog.get("worker_id"), "Primary Bot")
                 prog["eta"] = format_eta(
@@ -705,6 +946,7 @@ async def get_queue_data():
                     prog.get("total", "0 B"),
                     prog.get("speed", "0 B/s")
                 )
+                _apply_privacy(prog, prog.get("user_id") or owner_id)
                 if prog.get("status") == "Downloading":
                     downloading.append(prog)
                 else:
@@ -720,19 +962,20 @@ async def get_queue_data():
 
                 raw_size = getattr(task, "file_size", 0)
                 fsize = humanbytes(raw_size) if raw_size else ""
-                pending.append({
+                item = {
                     "filename": fname,
-                    "extension": extract_extension(fname),
+                    "task_id": tid,
                     "size": fsize,
                     "status": "Pending"
-                })
+                }
+                _apply_privacy(item, owner_id)
+                pending.append(item)
 
         for tid, prog in list(active_progress.items()):
             if tid not in seen_ids:
                 item = dict(prog)
                 fname = (item.get("filename") or "Unknown File").strip()
                 item["filename"] = fname
-                item["extension"] = extract_extension(fname)
                 item["task_id"] = tid
                 item["worker_name"] = worker_lookup.get(item.get("worker_id"), "Primary Bot")
                 item["eta"] = format_eta(
@@ -740,6 +983,7 @@ async def get_queue_data():
                     item.get("total", "0 B"),
                     item.get("speed", "0 B/s")
                 )
+                _apply_privacy(item, item.get("user_id"))
                 if item.get("status") == "Downloading":
                     downloading.append(item)
                 else:
@@ -753,6 +997,55 @@ async def get_queue_data():
         }
     except Exception as e:
         return {"success": False, "error": str(e), "downloading": [], "uploading": [], "pending": []}
+
+
+async def _run_web_broadcast(text_msg: str):
+    """Background broadcast loop triggered from the Telegram Mini App Admin Console."""
+    _broadcast_state["running"] = True
+    _broadcast_state["sent"] = 0
+    _broadcast_state["failed"] = 0
+    _broadcast_state["total"] = 0
+
+    try:
+        from plugins import file_rename
+        bot_client = getattr(Config, "BOT_CLIENT", None) or getattr(file_rename, "main_bot_client", None)
+        if bot_client is None:
+            return
+
+        all_users = await digital_botz.get_all_users()
+        _broadcast_state["total"] = len(all_users)
+
+        for user in all_users:
+            if not _broadcast_state["running"]:
+                break
+            uid = user.get("_id", user.get("id"))
+            if not uid:
+                continue
+            try:
+                await bot_client.send_message(int(uid), text_msg)
+                _broadcast_state["sent"] += 1
+            except FloodWait as fw:
+                await asyncio.sleep(fw.value)
+                try:
+                    await bot_client.send_message(int(uid), text_msg)
+                    _broadcast_state["sent"] += 1
+                except Exception:
+                    _broadcast_state["failed"] += 1
+            except (InputUserDeactivated, UserIsBlocked, PeerIdInvalid):
+                _broadcast_state["failed"] += 1
+                try:
+                    await digital_botz.delete_user(int(uid))
+                except Exception:
+                    pass
+            except Exception:
+                _broadcast_state["failed"] += 1
+
+            await asyncio.sleep(0.05)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        _broadcast_state["running"] = False
+        _broadcast_state["task"] = None
 
 
 @DigitalRenameBot.get("/", allow_head=True)
@@ -775,20 +1068,45 @@ async def root_route_handler(request):
 
 @DigitalRenameBot.get("/api/status")
 async def api_status_handler(request):
-    queue_data = await get_queue_data()
-    status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
+    user_obj = _extract_user_from_request(request)
+    is_admin = bool(user_obj and int(user_obj.get("id", 0)) in _get_admin_ids())
+    viewer_id = int(user_obj["id"]) if user_obj else None
+
+    queue_data = await get_queue_data(viewer_user_id=viewer_id, is_admin=is_admin)
+    status_data = await get_status(pending_count=len(queue_data.get("pending", [])), is_admin=is_admin)
     return web.json_response(status_data)
 
 
 @DigitalRenameBot.get("/api/queue")
 async def api_queue_handler(request):
-    queue_data = await get_queue_data()
+    user_obj = _extract_user_from_request(request)
+    is_admin = bool(user_obj and int(user_obj.get("id", 0)) in _get_admin_ids())
+    viewer_id = int(user_obj["id"]) if user_obj else None
+
+    queue_data = await get_queue_data(viewer_user_id=viewer_id, is_admin=is_admin)
     return web.json_response(queue_data)
+
+
+@DigitalRenameBot.get("/api/user/plan")
+async def api_user_plan_handler(request):
+    user_obj = _extract_user_from_request(request)
+    if not user_obj:
+        return web.json_response({"authenticated": False})
+
+    user_id = int(user_obj["id"])
+    plan_payload = await _build_user_plan_payload(user_id)
+    return web.json_response({"authenticated": True, **plan_payload})
 
 
 @DigitalRenameBot.get("/api/analytics/7d")
 async def api_analytics_7d_handler(request):
     analytics_data = await get_7d_analytics()
+    return web.json_response(analytics_data)
+
+
+@DigitalRenameBot.get("/api/analytics/24h")
+async def api_analytics_24h_handler(request):
+    analytics_data = await get_24h_analytics()
     return web.json_response(analytics_data)
 
 
@@ -804,6 +1122,48 @@ async def api_admin_verify_handler(request):
             "id": admin_user.get("id"),
             "first_name": admin_user.get("first_name", "Admin"),
             "username": admin_user.get("username", "")
+        }
+    })
+
+
+@DigitalRenameBot.get("/api/admin/user")
+async def api_admin_user_lookup_handler(request):
+    """Admin user lookup by Telegram ID or @username."""
+    admin_user = _extract_admin_from_request(request)
+    if not admin_user:
+        return web.json_response({"success": False, "error": "Unauthorized Telegram session"}, status=403)
+
+    query = request.query.get("q", "").strip()
+    if not query:
+        return web.json_response({"success": False, "error": "Missing user query"}, status=400)
+
+    user_doc = await digital_botz.find_user_by_query(query)
+    if not user_doc:
+        return web.json_response({"success": False, "error": "User not found in database"}, status=404)
+
+    uid = int(user_doc["_id"])
+    plan_info = await _build_user_plan_payload(uid)
+    ban_status = user_doc.get("ban_status", {})
+
+    try:
+        from helper.database import Task
+        from plugins.file_rename import active_progress
+        active_count = sum(1 for p in active_progress.values() if int(p.get("user_id") or 0) == uid)
+        queued_count = await Task.find(Task.user_id == uid).count()
+    except Exception:
+        active_count = 0
+        queued_count = 0
+
+    return web.json_response({
+        "success": True,
+        "user": {
+            "user_id": uid,
+            "first_name": user_doc.get("first_name") or f"User {uid}",
+            "username": user_doc.get("username") or "",
+            "is_banned": bool(ban_status.get("is_banned", False)),
+            "plan": plan_info,
+            "active_tasks": active_count,
+            "queued_tasks": queued_count
         }
     })
 
@@ -854,10 +1214,11 @@ async def api_admin_action_handler(request):
             reconnected = 0
 
             for w in workers:
-                if not getattr(w, "is_healthy", True) or getattr(w, "unhealthy_until", 0) > 0:
+                if not getattr(w, "is_healthy", True) or getattr(w, "unhealthy_until", 0) > 0 or getattr(w, "disabled", False):
                     healed += 1
                 w.is_healthy = True
                 w.unhealthy_until = 0
+                w.disabled = False
                 if not getattr(w, "is_connected", True):
                     try:
                         await w.connect()
@@ -885,12 +1246,147 @@ async def api_admin_action_handler(request):
         except Exception as e:
             return web.json_response({"success": False, "error": str(e)}, status=500)
 
+    elif action == "set_maintenance_message":
+        try:
+            from plugins import file_rename
+            file_rename.maintenance_message = str(body.get("message", "")).strip()
+            return web.json_response({
+                "success": True,
+                "message": "Maintenance notice updated." if file_rename.maintenance_message else "Maintenance notice cleared."
+            })
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+
+    elif action == "user_manage":
+        try:
+            uid = int(body.get("user_id", 0))
+            op = body.get("op")
+            if not uid:
+                return web.json_response({"success": False, "error": "Invalid user ID"}, status=400)
+
+            if op == "grant_premium":
+                days = int(body.get("days", 30))
+                if days <= 0:
+                    user_data = {"id": uid, "expiry_time": None, "is_lifetime": True}
+                    label = "Lifetime ♾️"
+                else:
+                    expiry_time = datetime.now() + timedelta(days=days)
+                    user_data = {"id": uid, "expiry_time": expiry_time, "is_lifetime": False}
+                    label = f"{days}d"
+                await digital_botz.add_premium(uid, user_data, limit=1073741824000, type="UltraPro")
+                return web.json_response({"success": True, "message": f"Granted UltraPro ({label}) to {uid}."})
+
+            elif op == "revoke_premium":
+                await digital_botz.remove_premium(uid)
+                return web.json_response({"success": True, "message": f"Revoked premium for {uid}."})
+
+            elif op == "ban":
+                await digital_botz.ban_user(uid, 3650, "Banned via Web Admin Console")
+                return web.json_response({"success": True, "message": f"User {uid} banned."})
+
+            elif op == "unban":
+                await digital_botz.remove_ban(uid)
+                return web.json_response({"success": True, "message": f"User {uid} unbanned."})
+
+            elif op == "clear_tasks":
+                from helper.database import Task
+                from plugins.file_rename import active_tasks
+                user_tasks = await Task.find(Task.user_id == uid).to_list()
+                cleared = 0
+                for t in user_tasks:
+                    tid = str(t.id)
+                    if tid in active_tasks:
+                        active_tasks[tid].cancel()
+                    await t.delete()
+                    cleared += 1
+                return web.json_response({"success": True, "message": f"Cleared {cleared} task(s) for user {uid}."})
+
+            return web.json_response({"success": False, "error": "Unknown user operation"}, status=400)
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+
+    elif action == "cancel_task":
+        try:
+            task_id = str(body.get("task_id", "")).strip()
+            if not task_id:
+                return web.json_response({"success": False, "error": "Missing task_id"}, status=400)
+
+            from plugins.file_rename import active_tasks, active_progress
+            cancelled = False
+            if task_id in active_tasks:
+                active_tasks[task_id].cancel()
+                cancelled = True
+            active_progress.pop(task_id, None)
+            try:
+                await digital_botz.delete_task(task_id)
+                cancelled = True
+            except Exception:
+                pass
+
+            return web.json_response({
+                "success": True,
+                "message": f"Task {task_id[-6:]} cancelled." if cancelled else "Task already completed."
+            })
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+
+    elif action == "worker_control":
+        try:
+            target_wid = str(body.get("worker_id", "")).strip()
+            op = body.get("op")
+            workers = getattr(Config, "WORKER_CLIENTS", [])
+            target = next((w for w in workers if str(id(w)) == target_wid), None)
+            if not target:
+                return web.json_response({"success": False, "error": "Worker node not found"}, status=404)
+
+            if op == "heal":
+                target.is_healthy = True
+                target.unhealthy_until = 0
+                target.disabled = False
+                if not getattr(target, "is_connected", True):
+                    try:
+                        await target.connect()
+                    except Exception:
+                        pass
+                return web.json_response({"success": True, "message": "Worker node healed & enabled."})
+            elif op == "disable":
+                target.disabled = True
+                return web.json_response({"success": True, "message": "Worker node disabled from rotation."})
+            elif op == "enable":
+                target.disabled = False
+                target.is_healthy = True
+                target.unhealthy_until = 0
+                return web.json_response({"success": True, "message": "Worker node enabled."})
+
+            return web.json_response({"success": False, "error": "Unknown worker op"}, status=400)
+        except Exception as e:
+            return web.json_response({"success": False, "error": str(e)}, status=500)
+
+    elif action == "broadcast_start":
+        msg = str(body.get("message", "")).strip()
+        if not msg:
+            return web.json_response({"success": False, "error": "Broadcast message cannot be empty"}, status=400)
+        if _broadcast_state["running"]:
+            return web.json_response({"success": False, "error": "A broadcast is already running"}, status=409)
+        _broadcast_state["task"] = asyncio.create_task(_run_web_broadcast(msg))
+        return web.json_response({"success": True, "message": "Global broadcast started."})
+
+    elif action == "broadcast_cancel":
+        _broadcast_state["running"] = False
+        if _broadcast_state["task"]:
+            _broadcast_state["task"].cancel()
+        return web.json_response({"success": True, "message": "Broadcast stopped."})
+
     return web.json_response({"success": False, "error": "Unknown admin action"}, status=400)
 
 
 @DigitalRenameBot.get("/api/stream")
 async def api_stream_handler(request):
-    """Unified Server-Sent Events (SSE) endpoint pushing live status, queue & 7-day analytics telemetry."""
+    """Unified Server-Sent Events (SSE) endpoint pushing live status, queue & analytics telemetry."""
+    user_obj = _extract_user_from_request(request)
+    is_admin = bool(user_obj and int(user_obj.get("id", 0)) in _get_admin_ids())
+    viewer_id = int(user_obj["id"]) if user_obj else None
+
     response = web.StreamResponse(
         status=200,
         reason='OK',
@@ -905,13 +1401,15 @@ async def api_stream_handler(request):
 
     try:
         while True:
-            queue_data = await get_queue_data()
-            status_data = await get_status(pending_count=len(queue_data.get("pending", [])))
-            analytics_data = await get_7d_analytics()
+            queue_data = await get_queue_data(viewer_user_id=viewer_id, is_admin=is_admin)
+            status_data = await get_status(pending_count=len(queue_data.get("pending", [])), is_admin=is_admin)
+            analytics_7d = await get_7d_analytics()
+            analytics_24h = await get_24h_analytics()
             payload = {
                 "status": status_data,
                 "queue": queue_data,
-                "analytics_7d": analytics_data
+                "analytics_7d": analytics_7d,
+                "analytics_24h": analytics_24h
             }
             chunk = f"data: {json.dumps(payload)}\n\n".encode("utf-8")
             await response.write(chunk)
