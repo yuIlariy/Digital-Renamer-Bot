@@ -73,6 +73,15 @@ class BotStats(Document):
     class Settings:
         name = "stats"
 
+class BotSettings(Document):
+    id: str = Field(default="global_settings", alias="_id")
+    queue_paused: bool = False
+    maintenance_message: str = ""
+    updated_at: Optional[datetime.datetime] = None
+
+    class Settings:
+        name = "bot_settings"
+
 class DailyAnalytics(Document):
     id: str = Field(alias="_id")  # YYYY-MM-DD (UTC)
     date: str = ""
@@ -125,7 +134,7 @@ class Database:
         self.db = self._client[self.database_name]
         await init_beanie(
             database=self.db,
-            document_models=[User, PremiumUser, BotStats, DailyAnalytics, HourlyAnalytics, Task]
+            document_models=[User, PremiumUser, BotStats, DailyAnalytics, HourlyAnalytics, Task, BotSettings]
         )
         print("✅ Database Layer Initialized via Beanie/Pydantic")
 
@@ -498,6 +507,67 @@ class Database:
     async def get_total_renames(self):
         stats = await BotStats.get("network_stats")
         return stats.total_renames if stats else 0
+
+    # ==========================================
+    # --- PERSISTENT MAINTENANCE SETTINGS ---
+    # ==========================================
+    async def get_maintenance_state(self) -> dict:
+        if self.db is not None:
+            doc = await self.db["bot_settings"].find_one({"_id": "global_settings"})
+            if doc:
+                return {
+                    "queue_paused": bool(doc.get("queue_paused", False)),
+                    "maintenance_message": str(doc.get("maintenance_message", "") or "")
+                }
+        try:
+            settings = await BotSettings.get("global_settings")
+            if settings:
+                return {
+                    "queue_paused": bool(settings.queue_paused),
+                    "maintenance_message": str(settings.maintenance_message or "")
+                }
+        except Exception:
+            pass
+        return {"queue_paused": False, "maintenance_message": ""}
+
+    async def set_maintenance_state(
+        self,
+        queue_paused: Optional[bool] = None,
+        maintenance_message: Optional[str] = None
+    ) -> dict:
+        update_fields = {"updated_at": datetime.datetime.now(datetime.timezone.utc)}
+        set_on_insert = {}
+        if queue_paused is not None:
+            update_fields["queue_paused"] = bool(queue_paused)
+        else:
+            set_on_insert["queue_paused"] = False
+
+        if maintenance_message is not None:
+            update_fields["maintenance_message"] = str(maintenance_message).strip()
+        else:
+            set_on_insert["maintenance_message"] = ""
+
+        if self.db is not None:
+            op = {"$set": update_fields}
+            if set_on_insert:
+                op["$setOnInsert"] = set_on_insert
+            await self.db["bot_settings"].update_one(
+                {"_id": "global_settings"},
+                op,
+                upsert=True
+            )
+        else:
+            settings = await BotSettings.get("global_settings")
+            if not settings:
+                settings = BotSettings()
+            if queue_paused is not None:
+                settings.queue_paused = bool(queue_paused)
+            if maintenance_message is not None:
+                settings.maintenance_message = str(maintenance_message).strip()
+            settings.updated_at = update_fields["updated_at"]
+            await settings.save()
+
+        return await self.get_maintenance_state()
 
     # ==========================================
     # --- 7-DAY & HOURLY ANALYTICS ROLLUPS ---
